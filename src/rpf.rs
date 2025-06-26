@@ -55,13 +55,29 @@ impl RpfArchive {
         let mut file = BufReader::new(File::open(&path)?);
         
         let header = Self::read_header(&mut file)?;
-        let entries_start_pos = if header.entry_count < 100 {
-            file.seek(SeekFrom::Start(2048))?;
-            let mut test_bytes = [0u8; 16];
-            file.read_exact(&mut test_bytes)?;
-            
-            if test_bytes.iter().all(|&b| b == 0) { 16u64 } else { 2048u64 }
+        let mut probe_ident = |pos: u64| -> std::io::Result<u32> {
+            file.seek(SeekFrom::Start(pos + 4))?; // skip name-offset (first dword)
+            let mut buf = [0u8; 4];
+            file.read_exact(&mut buf)?;
+            Ok(u32::from_le_bytes(buf))
+        };
+
+        let ident16   = probe_ident(16).unwrap_or(0);
+        let ident2048 = probe_ident(2048).unwrap_or(0);
+
+        let looks_valid = |ident: u32| -> bool {
+            ident == 0x7FFFFF00 || (ident & 0x80000000) == 0 || (ident & 0x80000000) != 0
+        };
+
+        let entries_start_pos = if looks_valid(ident16) && !looks_valid(ident2048) {
+            16u64
+        } else if looks_valid(ident2048) && !looks_valid(ident16) {
+            2048u64
+        } else if looks_valid(ident16) {
+            // Both look plausible; prefer the earlier one.
+            16u64
         } else {
+            // Fallback to 2048 – even if it may be garbage we will fail later with a clear error.
             2048u64
         };
         
