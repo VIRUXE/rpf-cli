@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use crate::rpf::RpfArchive;
 use crate::utils::matches_pattern;
@@ -20,6 +21,18 @@ pub fn run(archive_path: &Path, output_dir: Option<&Path>, pattern: Option<&str>
     fs::create_dir_all(&output_path)?;
     
     let files = archive.list_files();
+    
+    // Count directories in the archive
+    let mut dir_count = 0;
+    for entry in &archive.entries {
+        if matches!(entry, crate::rpf::RpfEntry::Directory(_)) {
+            dir_count += 1;
+        }
+    }
+    
+    let total_items = files.len() + dir_count;
+    
+    println!("Archive contains {} items ({} files, {} directories)", total_items, files.len(), dir_count);
     
     // Filter files if pattern is provided
     let files_to_extract: Vec<_> = if let Some(pattern) = pattern {
@@ -50,7 +63,7 @@ pub fn run(archive_path: &Path, output_dir: Option<&Path>, pattern: Option<&str>
     let mut extracted_count = 0;
     let mut failed_count = 0;
     
-    for file in files_to_extract {
+    for (i, file) in files_to_extract.iter().enumerate() {
         let file_output_path = output_path.join(&file.path);
         
         // Create parent directories
@@ -60,7 +73,25 @@ pub fn run(archive_path: &Path, output_dir: Option<&Path>, pattern: Option<&str>
         match extract_single_file(&archive, file, &file_output_path) {
             Ok(_) => {
                 extracted_count += 1;
-                if extracted_count % 100 == 0 { println!("Extracted {} files...", extracted_count); }
+                // Progress bar: [=====>     ] 45/137 filename.ext
+                let progress = (i + 1) as f32 / files_to_extract.len() as f32;
+                let bar_width = 30;
+                let filled = (progress * bar_width as f32) as usize;
+                let bar = if filled >= bar_width {
+                    "=".repeat(bar_width)
+                } else {
+                    "=".repeat(filled) + ">" + &" ".repeat(bar_width - filled - 1)
+                };
+                // Truncate filename if too long to keep progress on one line
+                let max_filename_len = 40;
+                let display_name = if file.name.len() > max_filename_len {
+                    format!("...{}", &file.name[file.name.len() - (max_filename_len - 3)..])
+                } else {
+                    file.name.clone()
+                };
+                // Pad the line to clear any leftover characters from previous longer filenames
+                print!("\r[{}] {}/{} {:<40}", bar, i + 1, files_to_extract.len(), display_name);
+                io::stdout().flush().unwrap();
             }
             Err(e) => {
                 eprintln!("Failed to extract {}: {:?}", file.path, e);
@@ -69,6 +100,7 @@ pub fn run(archive_path: &Path, output_dir: Option<&Path>, pattern: Option<&str>
         }
     }
     
+    println!(); // New line after progress bar
     println!("\nExtraction complete!");
     println!("Extracted: {} files", extracted_count);
     if failed_count > 0 { println!("Failed: {} files", failed_count); }
