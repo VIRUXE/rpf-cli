@@ -1,6 +1,47 @@
 [package]
-name = "rpf-cli"
+name = "rpf"
 version = "0.1.0"
 edition = "2024"
+authors = ["VIRUXE"]
+description = "Command-line tool for working with RAGE Package Files (RPF)"
+license = "MIT"
+repository = "https://github.com/viruxe/rpf"
+keywords = ["gta", "rage", "rpf", "archive", "extraction", "compression", "parsing", "gta5"]
+categories = ["command-line-utilities", "compression", "parsing"]
+
+[[bin]]
+name = "rpf"
+path = "src/main.rs"
 
 [dependencies]
+anyhow = "1.0"
+thiserror = "1.0"
+byteorder = "1.5"
+flate2 = "1.0"
+aes = "0.8"
+cipher = "0.4"
+log = "0.4"
+env_logger = "0.11"
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.10"
+
+# Cross-compilation targets
+[target.'cfg(windows)'.dependencies]
+# Windows-specific dependencies if needed
+
+[target.'cfg(unix)'.dependencies]
+# Unix/Linux-specific dependencies if needed
+
+# Optimizations for release builds
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+strip = false
