@@ -5,10 +5,9 @@ use std::path::{Path, PathBuf};
 mod rpf;
 mod commands;
 mod utils;
-mod crypto;
 
 use commands::{info, list, extract, verify, tree};
-use crypto::GtaKeys;
+use rpf::GtaKeys;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -36,7 +35,6 @@ enum Commands {
     },
 
     /// List files in an RPF archive
-    /// If you want to search for specific files
     List {
         /// Path to the RPF archive
         archive: PathBuf,
@@ -69,7 +67,6 @@ enum Commands {
     },
 
     /// Display archive contents in tree format
-    /// Good for feeding an LLM for example
     Tree {
         /// Path to the RPF archive
         archive: PathBuf,
@@ -108,12 +105,12 @@ fn main() -> Result<()> {
     let keys = load_keys(cli.keys.as_deref())?;
 
     match cli.command {
-        Commands::Info        { archive }                          => info::run(&archive, keys.as_ref()),
-        Commands::List        { archive, pattern, detailed }       => list::run(&archive, pattern.as_deref(), detailed, keys.as_ref()),
-        Commands::Extract     { archive, output, pattern }         => extract::run(&archive, output.as_deref(), pattern.as_deref(), keys.as_ref()),
-        Commands::Verify      { archive }                          => verify::run(&archive, keys.as_ref()),
-        Commands::Tree        { archive, depth }                   => tree::run(&archive, depth, keys.as_ref()),
-        Commands::ExtractKeys { exe, output }                      => {
+        Commands::Info        { archive }                    => info::run(&archive, keys.as_ref()),
+        Commands::List        { archive, pattern, detailed } => list::run(&archive, pattern.as_deref(), detailed, keys.as_ref()),
+        Commands::Extract     { archive, output, pattern }   => extract::run(&archive, output.as_deref(), pattern.as_deref(), keys.as_ref()),
+        Commands::Verify      { archive }                    => verify::run(&archive, keys.as_ref()),
+        Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys.as_ref()),
+        Commands::ExtractKeys { exe, output }                => {
             GtaKeys::extract_from_exe(&exe, Some(&output))?;
             Ok(())
         }

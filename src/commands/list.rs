@@ -1,40 +1,33 @@
 use anyhow::Result;
 use std::path::Path;
-use crate::rpf::RpfArchive;
-use crate::crypto::GtaKeys;
+use crate::rpf::{Archive, GtaKeys};
 use crate::utils::matches_pattern;
 
 pub fn run(archive_path: &Path, pattern: Option<&str>, detailed: bool, keys: Option<&GtaKeys>) -> Result<()> {
-    let archive = RpfArchive::open_with_keys(archive_path, keys)?;
-    let files   = archive.list_files();
+    let archive = Archive::open(archive_path, keys)?;
 
-    let filtered_files: Vec<_> = if let Some(pattern) = pattern {
-        files.into_iter()
-            .filter(|f| matches_pattern(&f.path, pattern))
-            .collect()
-    } else {
-        files
-    };
+    let mut files: Vec<_> = archive.list_files()
+        .into_iter()
+        .filter(|f| pattern.map_or(true, |p| matches_pattern(&f.path, p)))
+        .collect();
 
-    if filtered_files.is_empty() {
-        println!("No files found matching the pattern");
+    if files.is_empty() {
+        println!("No files found");
         return Ok(());
     }
 
-    let mut sorted_files = filtered_files;
-    sorted_files.sort_by(|a, b| a.path.cmp(&b.path));
+    files.sort_by(|a, b| a.path.cmp(&b.path));
 
     if detailed {
         println!("{:<60} {:>12} {:>12} {}", "Path", "Size", "Compressed", "Type");
         println!("{}", "-".repeat(100));
-
-        for file in sorted_files {
-            let file_type = if file.is_resource { "Resource" } else { "Binary" };
-            println!("{:<60} {:>12} {:>12} {}", file.path, file.uncompressed_size, file.size, file_type);
+        for f in files {
+            let kind = if f.is_resource { "Resource" } else { "Binary" };
+            println!("{:<60} {:>12} {:>12} {}", f.path, f.mem_size, f.size, kind);
         }
     } else {
-        for file in sorted_files {
-            println!("{}", file.path);
+        for f in files {
+            println!("{}", f.path);
         }
     }
 

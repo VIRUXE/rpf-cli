@@ -100,12 +100,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "byteorder"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
-
-[[package]]
 name = "cfg-if"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -406,6 +400,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
+name = "rage-rpf"
+version = "0.1.0"
+dependencies = [
+ "aes",
+ "anyhow",
+ "cipher",
+ "flate2",
+ "sha1",
+]
+
+[[package]]
 name = "regex"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -438,15 +443,11 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 name = "rpf"
 version = "0.2.0"
 dependencies = [
- "aes",
  "anyhow",
- "byteorder",
- "cipher",
  "clap",
  "env_logger",
- "flate2",
  "log",
- "sha1",
+ "rage-rpf",
  "tempfile",
  "thiserror",
 ]

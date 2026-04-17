@@ -1,105 +1,75 @@
 use anyhow::{Context, Result};
-use std::fs;
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
-use crate::rpf::RpfArchive;
-use crate::crypto::GtaKeys;
+use std::{fs, io::{self, Write}, path::{Path, PathBuf}};
+use crate::rpf::{Archive, FileRef, GtaKeys};
 use crate::utils::matches_pattern;
 
 pub fn run(archive_path: &Path, output_dir: Option<&Path>, pattern: Option<&str>, keys: Option<&GtaKeys>) -> Result<()> {
-    let archive = RpfArchive::open_with_keys(archive_path, keys)?;
+    let archive = Archive::open(archive_path, keys)?;
 
-    let output_path = match output_dir {
-        Some(dir) => dir.to_path_buf(),
-        None => PathBuf::from(archive_path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("extracted")),
-    };
-
+    let output_path = output_dir.map(Path::to_path_buf).unwrap_or_else(|| {
+        PathBuf::from(archive_path.file_stem().and_then(|s| s.to_str()).unwrap_or("extracted"))
+    });
     fs::create_dir_all(&output_path)?;
 
-    let files = archive.list_files();
+    println!("Archive contains {} entries ({} dirs, {} files)",
+        archive.entry_count, archive.dir_count, archive.entry_count - archive.dir_count);
 
-    let mut dir_count = 0;
-    for entry in &archive.entries {
-        if matches!(entry, crate::rpf::RpfEntry::Directory(_)) {
-            dir_count += 1;
-        }
-    }
-
-    let total_items = files.len() + dir_count;
-
-    println!("Archive contains {} items ({} files, {} directories)", total_items, files.len(), dir_count);
-
-    let files_to_extract: Vec<_> = if let Some(pattern) = pattern {
-        if !pattern.contains('*') && !pattern.contains('?') {
-            if let Some(file) = archive.find_file(pattern) {
-                vec![file]
-            } else {
-                println!("File not found: {}", pattern);
-                return Ok(());
+    let all_files = archive.list_files();
+    let to_extract: Vec<&FileRef> = if let Some(pat) = pattern {
+        if !pat.contains('*') && !pat.contains('?') {
+            match archive.find_file(pat) {
+                Some(f) => vec![f],
+                None    => { println!("File not found: {}", pat); return Ok(()); }
             }
         } else {
-            files.into_iter().filter(|f| matches_pattern(&f.path, pattern)).collect()
+            all_files.into_iter().filter(|f| matches_pattern(&f.path, pat)).collect()
         }
     } else {
-        files
+        all_files
     };
 
-    if files_to_extract.is_empty() {
-        println!("No files found to extract");
+    if to_extract.is_empty() {
+        println!("No files to extract");
         return Ok(());
     }
 
-    println!("Extracting {} files...", files_to_extract.len());
+    println!("Extracting {} files...", to_extract.len());
 
-    let mut extracted_count = 0;
-    let mut failed_count = 0;
+    let total = to_extract.len();
+    let mut ok = 0usize;
+    let mut fail = 0usize;
 
-    for (i, file) in files_to_extract.iter().enumerate() {
-        let file_output_path = output_path.join(&file.path);
+    for (i, file) in to_extract.iter().enumerate() {
+        let dest = output_path.join(&file.path);
+        if let Some(parent) = dest.parent() { fs::create_dir_all(parent)?; }
 
-        if let Some(parent) = file_output_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        match extract_single_file(&archive, file, &file_output_path, keys) {
-            Ok(_) => {
-                extracted_count += 1;
-                let progress = (i + 1) as f32 / files_to_extract.len() as f32;
-                let bar_width = 30;
-                let filled = (progress * bar_width as f32) as usize;
-                let bar = if filled >= bar_width {
-                    "=".repeat(bar_width)
-                } else {
-                    "=".repeat(filled) + ">" + &" ".repeat(bar_width - filled - 1)
-                };
-                let max_filename_len = 40;
-                let display_name = if file.name.len() > max_filename_len {
-                    format!("...{}", &file.name[file.name.len() - (max_filename_len - 3)..])
-                } else {
-                    file.name.clone()
-                };
-                print!("\r[{}] {}/{} {:<40}", bar, i + 1, files_to_extract.len(), display_name);
-                io::stdout().flush().unwrap();
+        match archive.extract(file, keys) {
+            Ok(data) => {
+                fs::write(&dest, &data)
+                    .with_context(|| format!("Write failed: {}", dest.display()))?;
+                ok += 1;
+                print_progress(i + 1, total, &file.name);
             }
             Err(e) => {
-                eprintln!("Failed to extract {}: {:?}", file.path, e);
-                failed_count += 1;
+                eprintln!("\nFailed to extract {}: {}", file.path, e);
+                fail += 1;
             }
         }
     }
 
-    println!();
-    println!("\nExtraction complete!");
-    println!("Extracted: {} files", extracted_count);
-    if failed_count > 0 { println!("Failed: {} files", failed_count); }
-
+    println!("\n\nExtracted: {}  Failed: {}", ok, fail);
     Ok(())
 }
 
-fn extract_single_file(archive: &RpfArchive, file: &crate::rpf::RpfFileEntry, output_path: &Path, keys: Option<&GtaKeys>) -> Result<()> {
-    let data = archive.extract_file_with_keys(file, keys)
-        .with_context(|| format!("Failed to extract file: {}", file.path))?;
-
-    fs::write(output_path, data).with_context(|| format!("Failed to write file: {}", output_path.display()))?;
-
-    Ok(())
+fn print_progress(n: usize, total: usize, name: &str) {
+    let pct = n as f32 / total as f32;
+    let filled = (pct * 30.0) as usize;
+    let bar = if filled >= 30 {
+        "=".repeat(30)
+    } else {
+        format!("{}>{}",  "=".repeat(filled), " ".repeat(29 - filled))
+    };
+    let label = if name.len() > 40 { format!("...{}", &name[name.len()-37..]) } else { name.to_string() };
+    print!("\r[{}] {}/{} {:<40}", bar, n, total, label);
+    io::stdout().flush().ok();
 }
