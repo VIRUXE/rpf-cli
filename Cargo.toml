@@ -1,12 +1,12 @@
 [package]
-name = "rpf"
+name = "rage-package-format"
 version = "0.3.0"
 edition = "2024"
 authors = ["VIRUXE"]
 description = "Command-line tool for working with RAGE Package Files (RPF)"
 license = "MIT"
 repository = "https://github.com/viruxe/rpf"
-keywords = ["gta", "rage", "rpf", "archive", "extraction", "compression", "parsing", "gta5"]
+keywords = ["gta", "rage", "rpf", "archive", "gta5"]
 categories = ["command-line-utilities", "compression", "parsing"]
 
 [[bin]]
