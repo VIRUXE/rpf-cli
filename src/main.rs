@@ -6,7 +6,7 @@ mod rpf;
 mod commands;
 mod utils;
 
-use commands::{info, list, extract, verify, tree};
+use commands::{info, list, extract, verify, tree, ytd};
 use rpf::GtaKeys;
 
 #[derive(Parser)]
@@ -76,6 +76,19 @@ enum Commands {
         depth: Option<usize>,
     },
 
+    /// Extract textures from a .ytd file inside an RPF archive as DDS files
+    Ytd {
+        /// Path to the RPF archive
+        archive: PathBuf,
+
+        /// Name of the .ytd file inside the archive (e.g. "vehicles.ytd")
+        ytd: String,
+
+        /// Output directory (default: ytd stem)
+        #[arg(short, long, value_name = "DIR")]
+        output: Option<PathBuf>,
+    },
+
     /// Extract AES/NG keys from a GTA5.exe binary
     ExtractKeys {
         /// Path to GTA5.exe
@@ -110,6 +123,9 @@ fn main() -> Result<()> {
         Commands::Extract     { archive, output, pattern }   => extract::run(&archive, output.as_deref(), pattern.as_deref(), keys.as_ref()),
         Commands::Verify      { archive }                    => verify::run(&archive, keys.as_ref()),
         Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys.as_ref()),
+        Commands::Ytd         { archive, ytd: ytd_name, output } => {
+            ytd::run(&archive, &ytd_name, output.as_deref(), keys.as_ref())
+        }
         Commands::ExtractKeys { exe, output }                => {
             GtaKeys::extract_from_exe(&exe, Some(&output))?;
             Ok(())

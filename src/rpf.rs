@@ -46,6 +46,10 @@ impl Archive {
         let entry = &self.archive.entries[file.entry_index];
         self.archive.extract_entry(&self.data, entry, keys)
     }
+
+    pub fn entry_kind(&self, file: &FileRef) -> &rage_rpf::RpfEntryKind {
+        &self.archive.entries[file.entry_index].kind
+    }
 }
 
 fn find_in_dir<'a>(dir: &'a DirNode, path: &str) -> Option<&'a FileRef> {
