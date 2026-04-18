@@ -400,8 +400,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
+name = "rage-package-format"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "log",
+ "rage-rpf",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "rage-rpf"
-version = "0.1.0"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11cebea5fd9c6441dc9a65928e703b57ab418df48fae4860b890a1910e713789"
 dependencies = [
  "aes",
  "anyhow",
@@ -438,19 +453,6 @@ name = "regex-syntax"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
-
-[[package]]
-name = "rpf"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "clap",
- "env_logger",
- "log",
- "rage-rpf",
- "tempfile",
- "thiserror",
-]
 
 [[package]]
 name = "rustix"
