@@ -10,6 +10,7 @@ use std::path::Path;
 
 /// Full archive with parsed metadata, directory tree, and raw data in memory.
 pub struct Archive {
+    #[allow(dead_code)]
     pub path        : std::path::PathBuf,
     pub encryption  : RpfEncryption,
     pub entry_count : usize,
