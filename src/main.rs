@@ -6,7 +6,7 @@ mod rpf;
 mod commands;
 mod utils;
 
-use commands::{info, list, extract, verify, tree, ytd};
+use commands::{info, list, extract, verify, tree, ytd, create};
 use rpf::GtaKeys;
 
 #[derive(Parser)]
@@ -89,6 +89,24 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
+    /// Create an RPF archive from a directory
+    Create {
+        /// Directory to pack
+        input: PathBuf,
+
+        /// Output RPF file path
+        #[arg(short, long, value_name = "FILE")]
+        output: PathBuf,
+
+        /// RPF version to create (0, 2, 3, 4, 6, 7)
+        #[arg(short, long, default_value = "7")]
+        version: u8,
+
+        /// Encryption mode (none, open, ng)
+        #[arg(short, long, default_value = "none")]
+        encryption: String,
+    },
+
     /// Extract AES/NG keys from a GTA5.exe binary
     ExtractKeys {
         /// Path to GTA5.exe
@@ -125,6 +143,9 @@ fn main() -> Result<()> {
         Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys.as_ref()),
         Commands::Ytd         { archive, ytd: ytd_name, output } => {
             ytd::run(&archive, &ytd_name, output.as_deref(), keys.as_ref())
+        }
+        Commands::Create { input, output, version, encryption } => {
+            create::run(&input, &output, version, &encryption, keys.as_ref())
         }
         Commands::ExtractKeys { exe, output }                => {
             GtaKeys::extract_from_exe(&exe, Some(&output))?;
