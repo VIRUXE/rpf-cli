@@ -420,9 +420,9 @@ dependencies = [
 
 [[package]]
 name = "rage-rpf"
-version = "0.4.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad118325f5d9695b9b40a95b45d578da3c567d857d5e81b4ef655f7393e2059f"
+checksum = "69da7cd75ba417edf60ea4d02405566a6ba8b57997ca2613de481e8dfd3a9125"
 dependencies = [
  "aes",
  "anyhow",
