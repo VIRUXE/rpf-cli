@@ -1,9 +1,9 @@
 use anyhow::{bail, Result};
-use rage_rpf::{RpfBuilder, RpfEncryption, RpfVersion};
+use rpf_archive::{RpfBuilder, RpfEncryption, RpfVersion};
 use std::fs;
 use std::path::Path;
 
-use rage_rpf::GtaKeys;
+use rpf_archive::GtaKeys;
 
 pub fn run(
     input_dir: &Path,

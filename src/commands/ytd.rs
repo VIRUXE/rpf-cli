@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-use rage_rpf::{parse_ytd, RpfEntryKind};
+use rpf_archive::{parse_ytd, RpfEntryKind};
 
 use crate::rpf::{Archive, GtaKeys};
 

@@ -1,6 +1,6 @@
-// Thin adapter over rage_rpf for rpf-cli commands.
-// Re-exports rage_rpf types that commands use directly.
-pub use rage_rpf::{
+// Thin adapter over rpf_archive for rpf-cli commands.
+// Re-exports rpf_archive types that commands use directly.
+pub use rpf_archive::{
     DirNode, FileRef, GtaKeys, RpfArchive, RpfEncryption,
     build_directory_tree, list_all_files,
 };
@@ -48,7 +48,7 @@ impl Archive {
         self.archive.extract_entry(&self.data, entry, keys)
     }
 
-    pub fn entry_kind(&self, file: &FileRef) -> &rage_rpf::RpfEntryKind {
+    pub fn entry_kind(&self, file: &FileRef) -> &rpf_archive::RpfEntryKind {
         &self.archive.entries[file.entry_index].kind
     }
 }
