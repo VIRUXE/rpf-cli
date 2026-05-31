@@ -58,6 +58,11 @@ enum Commands {
 
         /// Specific file or pattern to extract
         pattern: Option<String>,
+
+        /// Recurse into nested RPF archives, extracting them to loose files
+        /// (resource files get a valid RSC7 header, like CodeWalker)
+        #[arg(short, long)]
+        recursive: bool,
     },
 
     /// Verify integrity of an RPF archive
@@ -138,7 +143,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Info        { archive }                    => info::run(&archive, keys.as_ref()),
         Commands::List        { archive, pattern, detailed } => list::run(&archive, pattern.as_deref(), detailed, keys.as_ref()),
-        Commands::Extract     { archive, output, pattern }   => extract::run(&archive, output.as_deref(), pattern.as_deref(), keys.as_ref()),
+        Commands::Extract     { archive, output, pattern, recursive } => extract::run(&archive, output.as_deref(), pattern.as_deref(), recursive, keys.as_ref()),
         Commands::Verify      { archive }                    => verify::run(&archive, keys.as_ref()),
         Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys.as_ref()),
         Commands::Ytd         { archive, ytd: ytd_name, output } => {
