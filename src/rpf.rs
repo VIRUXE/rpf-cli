@@ -6,7 +6,7 @@ pub use rpf_archive::{
 };
 
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Full archive with parsed metadata, directory tree, and raw data in memory.
 pub struct Archive {
@@ -23,7 +23,12 @@ pub struct Archive {
 impl Archive {
     pub fn open(path: &Path, keys: Option<&GtaKeys>) -> Result<Self> {
         let data = std::fs::read(path)?;
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        Self::from_bytes(data, &name, keys)
+    }
+
+    /// Parse an archive from in-memory bytes (used to descend into nested RPFs).
+    pub fn from_bytes(data: Vec<u8>, name: &str, keys: Option<&GtaKeys>) -> Result<Self> {
         let archive = RpfArchive::parse(&data, name, keys)?;
 
         let encryption = archive.encryption;
@@ -31,7 +36,7 @@ impl Archive {
         let dir_count = archive.entries.iter().filter(|e| e.is_directory()).count();
         let root = build_directory_tree(&archive.entries);
 
-        Ok(Self { path: path.to_path_buf(), encryption, entry_count, dir_count, root, archive, data })
+        Ok(Self { path: PathBuf::from(name), encryption, entry_count, dir_count, root, archive, data })
     }
 
     pub fn list_files(&self) -> Vec<&FileRef> {
