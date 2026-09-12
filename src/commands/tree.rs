@@ -4,6 +4,7 @@ use crate::rpf::{Archive, DirNode, GtaKeys};
 
 pub fn run(archive_path: &Path, max_depth: Option<usize>, keys: Option<&GtaKeys>) -> Result<()> {
     let archive = Archive::open(archive_path, keys)?;
+    archive.require_keys(keys)?;
 
     println!("{}", archive_path.file_name().unwrap_or_default().to_string_lossy());
     print_tree(&archive.root, "", 0, max_depth);

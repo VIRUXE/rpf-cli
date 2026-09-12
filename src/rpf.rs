@@ -39,6 +39,18 @@ impl Archive {
         Ok(Self { path: PathBuf::from(name), encryption, entry_count, dir_count, root, archive, data })
     }
 
+    /// Entry names and contents decode to noise without keys, so say so
+    /// instead of printing garbage.
+    pub fn require_keys(&self, keys: Option<&GtaKeys>) -> Result<()> {
+        if keys.is_none() && matches!(self.encryption, RpfEncryption::Ng | RpfEncryption::Aes) {
+            anyhow::bail!(
+                "archive is {:?}-encrypted — pass --exe <GTA5.exe> or set GTAV_PATH",
+                self.encryption
+            );
+        }
+        Ok(())
+    }
+
     pub fn list_files(&self) -> Vec<&FileRef> {
         list_all_files(&self.root)
     }

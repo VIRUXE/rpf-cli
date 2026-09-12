@@ -5,6 +5,7 @@ use crate::utils::matches_pattern;
 
 pub fn run(archive_path: &Path, pattern: Option<&str>, detailed: bool, keys: Option<&GtaKeys>) -> Result<()> {
     let archive = Archive::open(archive_path, keys)?;
+    archive.require_keys(keys)?;
 
     let mut files: Vec<_> = archive.list_files()
         .into_iter()

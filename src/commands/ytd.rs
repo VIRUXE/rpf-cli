@@ -13,6 +13,7 @@ pub fn run(
     keys: Option<&GtaKeys>,
 ) -> Result<()> {
     let archive = Archive::open(archive_path, keys)?;
+    archive.require_keys(keys)?;
 
     let name_lower = ytd_name.to_lowercase();
     let file_ref = archive

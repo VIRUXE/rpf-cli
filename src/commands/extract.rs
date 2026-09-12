@@ -5,6 +5,7 @@ use crate::utils::matches_pattern;
 
 pub fn run(archive_path: &Path, output_dir: Option<&Path>, pattern: Option<&str>, recursive: bool, keys: Option<&GtaKeys>) -> Result<()> {
     let archive = Archive::open(archive_path, keys)?;
+    archive.require_keys(keys)?;
 
     let output_path = output_dir.map(Path::to_path_buf).unwrap_or_else(|| {
         PathBuf::from(archive_path.file_stem().and_then(|s| s.to_str()).unwrap_or("extracted"))
