@@ -633,19 +633,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
-name = "rage-package-format"
-version = "0.6.0"
-dependencies = [
- "anyhow",
- "clap",
- "env_logger",
- "log",
- "rpf-archive",
- "tempfile",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "regex"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -693,6 +680,19 @@ dependencies = [
  "sha1",
  "texture2ddecoder",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "rpf-cli"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "log",
+ "rpf-archive",
+ "tempfile",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
