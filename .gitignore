@@ -11,6 +11,9 @@ target/
 # Output produced by cargo-mutants (mutation testing)
 **/mutants.out*/
 
+# Keys extracted from a local game install
+/keys
+
 # Added by cargo
 
 /target

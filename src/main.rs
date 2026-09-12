@@ -1,9 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
 mod rpf;
 mod commands;
+mod keys;
 mod utils;
 
 use commands::{info, list, extract, verify, tree, ytd, create};
@@ -18,7 +19,12 @@ struct Cli {
     #[arg(short, long, global = true)]
     verbose: bool,
 
-    /// Directory with extracted GTA V keys (gtav_aes_key.dat, gtav_ng_key.dat, gtav_ng_decrypt_tables.dat)
+    /// GTA5.exe (or the folder holding it) to read the keys from
+    #[arg(long, global = true, value_name = "PATH", env = "GTAV_PATH")]
+    exe: Option<PathBuf>,
+
+    /// Directory with keys already written out by `extract-keys`; takes
+    /// precedence over --exe
     #[arg(long, global = true, value_name = "DIR")]
     keys: Option<PathBuf>,
 
@@ -112,22 +118,21 @@ enum Commands {
         encryption: String,
     },
 
-    /// Extract AES/NG keys from a GTA5.exe binary
+    /// Write the keys out to disk for reuse with --keys
     ExtractKeys {
-        /// Path to GTA5.exe
-        #[arg(long, value_name = "FILE")]
-        exe: PathBuf,
-
         /// Directory to save extracted keys into
         #[arg(short, long, value_name = "DIR")]
         output: PathBuf,
     },
 }
 
-fn load_keys(path: Option<&Path>) -> Result<Option<GtaKeys>> {
-    match path {
-        Some(p) => Ok(Some(GtaKeys::load_from_path(p)?)),
-        None    => Ok(None),
+fn load_keys(exe: Option<&Path>, keys_dir: Option<&Path>) -> Result<Option<GtaKeys>> {
+    // Keys win over the executable, so an explicit --keys still works when
+    // GTAV_PATH is set in the environment.
+    match (keys_dir, exe) {
+        (Some(dir), _)  => Ok(Some(GtaKeys::load_from_path(dir)?)),
+        (_, Some(exe))  => Ok(Some(keys::from_exe(&keys::resolve_exe(exe)?)?)),
+        (None, None)    => Ok(None),
     }
 }
 
@@ -138,7 +143,7 @@ fn main() -> Result<()> {
         env_logger::Env::default().default_filter_or(if cli.verbose { "debug" } else { "info" })
     ).init();
 
-    let keys = load_keys(cli.keys.as_deref())?;
+    let keys = load_keys(cli.exe.as_deref(), cli.keys.as_deref())?;
 
     match cli.command {
         Commands::Info        { archive }                    => info::run(&archive, keys.as_ref()),
@@ -152,9 +157,9 @@ fn main() -> Result<()> {
         Commands::Create { input, output, version, encryption } => {
             create::run(&input, &output, version, &encryption, keys.as_ref())
         }
-        Commands::ExtractKeys { exe, output }                => {
-            GtaKeys::extract_from_exe(&exe, Some(&output))?;
-            Ok(())
+        Commands::ExtractKeys { output }                     => {
+            let exe = cli.exe.context("--exe is required to extract keys")?;
+            keys::extract(&keys::resolve_exe(&exe)?, &output)
         }
     }
 }
