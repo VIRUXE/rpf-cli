@@ -636,14 +636,11 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 name = "rage-package-format"
 version = "0.6.0"
 dependencies = [
- "aes",
  "anyhow",
  "clap",
  "env_logger",
- "flate2",
  "log",
  "rpf-archive",
- "sha1",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -679,9 +676,9 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rpf-archive"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7d1d4402ee65cc77657f46d892cd064a68ecfc49633e7078548422a1e0ea52b"
+checksum = "6d8fff57c9e4cee2b2ba0aebdcfbc2173c13d04bb0a08271bb707f5ffa58b6ee"
 dependencies = [
  "aes",
  "anyhow",
