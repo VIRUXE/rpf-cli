@@ -16,7 +16,7 @@ pub fn load_resource(archive: &Archive, name: &str, keys: Option<&GtaKeys>) -> R
     let name_lower = name.to_lowercase();
     let file_ref = archive.find_file(&name_lower).with_context(|| {
         format!(
-            "'{}' not found in archive (retail x64*.rpf keep drawables in nested .rpf files — extract the nested archive first)",
+            "'{}' not found in archive (retail x64*.rpf keep drawables in nested .rpf files — run `rpf search <archive> <name>` to find which one, then extract it)",
             name
         )
     })?;

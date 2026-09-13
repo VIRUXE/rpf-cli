@@ -161,7 +161,14 @@ fn textures_and_screenshot_produce_readable_images() {
         assert_eq!(&bytes[..4], b"DDS ", "{} does not start with the DDS magic", dds.display());
     }
 
-    // 2. Render a drawable. Retail archives keep drawables inside nested RPFs,
+    // 2. `search` sees into nested archives without extracting anything.
+    let found = stdout_of(&rpf(&["search", &format!("{gtav}/x64b.rpf"), "*icons.rpf/*.ydr", "--limit", "1"]));
+    assert!(
+        found.trim().contains("x64b.rpf/levels/gta5/generic/icons.rpf/") && found.trim().ends_with(".ydr"),
+        "unexpected search output:\n{found}"
+    );
+
+    // 3. Render a drawable. Retail archives keep drawables inside nested RPFs,
     //    so one has to come out to disk before it can be opened.
     let nested_dir = tmp.path().join("nested");
     rpf(&[

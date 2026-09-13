@@ -16,6 +16,7 @@ Drop a star if you've found this tool useful.
 ```
 info          Display information about an archive
 list          List files, optionally filtered by pattern
+search        Find files by name, contents or hash inside archives (and nested archives) without extracting
 extract       Extract files, with --recursive to descend into nested archives
 verify        Verify archive integrity
 tree          Display contents as a tree
@@ -33,6 +34,25 @@ rpf tree resource.rpf
 rpf extract resource.rpf -o ./out
 ```
 
+## Searching without extracting
+
+`list` only sees one archive's top level; `search` descends into nested `.rpf`
+entries in memory, and takes a directory to cover every archive under it:
+
+```sh
+rpf search "<GTA V>/x64b.rpf" prop_mk_arrow_3d.ydr          # which nested rpf holds it?
+rpf search "<GTA V>" "*.ymt" --json                          # every .ymt in the install
+rpf search "<GTA V>/x64a.rpf" --content binoculars -i        # bytes inside files (resources are inflated)
+rpf search "<GTA V>/x64b.rpf" --hex "52 53 43 37" --limit 5  # raw byte pattern
+rpf search "<GTA V>/x64a.rpf" --hash 0x6D8A1F3C              # JOAAT of a name or stem
+```
+
+Hits print as `<archive>:<path/inside/nested.rpf/file>`, one per line; `-d` adds
+size, type and hash, and `--json` emits an array with the same fields plus the
+match offset. A pattern without wildcards is a substring match on the full path,
+so `inner.rpf` returns the archive and everything under it. Filters combine with
+AND, and the summary goes to stderr so stdout stays clean for piping.
+
 ## Images for humans and LLMs
 
 Both image commands write ordinary picture files, so you can look at a model or
@@ -47,9 +67,9 @@ rpf textures  ./nested/levels/gta5/generic/icons.rpf prop_mk_arrow_3d.ydr
 ```
 
 Retail `x64*.rpf` archives keep drawables inside nested RPFs, so a drawable has
-to be extracted to disk before either command can open it — verify the exact
-extracted path with the binary, since it mirrors the nested archive's own
-folder layout (using `GTAV_PATH="C:/Program Files (x86)/Steam/steamapps/common/Grand Theft Auto V"`
+to be extracted to disk before either command can open it — `rpf search` tells
+you which nested archive holds it, and the extracted path mirrors that
+archive's own folder layout (using `GTAV_PATH="C:/Program Files (x86)/Steam/steamapps/common/Grand Theft Auto V"`
 above).
 
 Line by line: every texture in a dictionary lands in a folder named after it;
@@ -111,18 +131,16 @@ material itself is the same across game versions — extracting once is enough.
 
 ## Releasing
 
-`rpf-cli` depends on `rpf-archive` by path (for local development against the
-sibling checkout) with a `version` fallback so a standalone checkout, or CI
-that clones only this repo, can still resolve it from crates.io. Before
-cutting a release:
+`rpf-cli` depends on the published `rpf-archive` crate. When developing against
+the sibling checkout, add `path = "../rpf-archive-rs"` to the dependency line
+temporarily and drop it again before releasing. To cut a release:
 
-1. Publish `rpf-archive` 0.8.0 to crates.io first (the version this crate's
-   `Cargo.toml` currently pins).
-2. Drop the `path = "../rpf-archive-rs"` from the `rpf-archive` dependency
-   line so the build resolves the published crate.
-3. Regenerate `Cargo.lock` (`cargo update -p rpf-archive`).
-4. Bump this crate's version in `Cargo.toml`.
-5. Tag the release.
+1. If a library change is needed, publish `rpf-archive` to crates.io first and
+   bump the version this crate pins.
+2. Bump this crate's version in `Cargo.toml` and rebuild so `Cargo.lock` follows.
+3. Commit, then `gh release create vX.Y.Z --notes ...` — the tag triggers the
+   `release` workflow, which builds the Linux and Windows binaries and attaches
+   them to that release.
 
 Publishing itself is a manual, deliberate step — nothing here does it for you.
 

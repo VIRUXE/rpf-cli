@@ -6,3 +6,4 @@ pub mod tree;
 pub mod textures;
 pub mod screenshot;
 pub mod create;
+pub mod search;

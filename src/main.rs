@@ -8,7 +8,7 @@ mod keys;
 mod resources;
 mod utils;
 
-use commands::{info, list, extract, verify, tree, textures, screenshot, create};
+use commands::{info, list, extract, verify, tree, textures, screenshot, create, search};
 use rpf::GtaKeys;
 
 #[derive(Parser)]
@@ -71,6 +71,9 @@ enum Commands {
         #[arg(short, long)]
         recursive: bool,
     },
+
+    /// Find files by name, contents or hash, descending into nested archives without extracting
+    Search(search::SearchArgs),
 
     /// Verify integrity of an RPF archive
     Verify {
@@ -144,6 +147,7 @@ fn main() -> Result<()> {
         Commands::Info        { archive }                    => info::run(&archive, keys.as_ref()),
         Commands::List        { archive, pattern, detailed } => list::run(&archive, pattern.as_deref(), detailed, keys.as_ref()),
         Commands::Extract     { archive, output, pattern, recursive } => extract::run(&archive, output.as_deref(), pattern.as_deref(), recursive, keys.as_ref()),
+        Commands::Search(args)                               => search::run(&args, keys.as_ref()),
         Commands::Verify      { archive }                    => verify::run(&archive, keys.as_ref()),
         Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys.as_ref()),
         Commands::Textures(args)                             => textures::run(&args, keys.as_ref()),
