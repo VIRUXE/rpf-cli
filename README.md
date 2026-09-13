@@ -61,7 +61,9 @@ without costing you anything — models downscale past roughly 1500 px anyway.
 Textures a model asks for but no dictionary supplies are drawn flat grey and
 listed by name, so the output itself tells you which `--ytd` to pass next. A
 YFT renders its main body only: wheels and breakable parts are separate
-drawables and do not appear. Retail `x64*.rpf` archives keep their drawables
+drawables and do not appear. Entries in a drawable dictionary (`.ydd`) mostly
+share one name — the file's own — so they are reported and written out as
+`0x<hash>` instead, and that hash is what `--entry` takes to pick one of them. Retail `x64*.rpf` archives keep their drawables
 inside nested RPFs, so extract the nested rpf first (`rpf extract "<GTA V>/x64e.rpf"
 "*vehicles.rpf" -o ./nested`) and point the command at that. The old `ytd`
 command still works as an alias for `textures`, and `--dds` restores its
