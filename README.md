@@ -20,6 +20,7 @@ extract       Extract files, with --recursive to descend into nested archives
 verify        Verify archive integrity
 tree          Display contents as a tree
 textures      Export textures from a .ytd/.ydr/.ydd/.yft as PNG/JPG/WebP (or DDS with --dds)
+screenshot    Render a .ydr/.ydd/.yft to an image
 create        Create an archive from a directory
 extract-keys  Write the keys out to disk for reuse with --keys
 ```
@@ -41,6 +42,8 @@ install. Point the tool at the game once and forget about it:
 export GTAV_PATH="<GTA V>"          # or the full path to GTA5.exe
 rpf list "<GTA V>/x64a.rpf" "*.ytd"
 rpf textures "<GTA V>/x64a.rpf" binoculars.ytd
+rpf screenshot "<GTA V>/x64e.rpf" prop_barrel_01a.ydr --views front,iso --grid
+rpf screenshot "<GTA V>/x64e.rpf" prop_barrel_01a.ydr --ytd prop_barrel_01a
 ```
 
 `--exe <PATH>` does the same thing per-run and overrides the variable. Either
