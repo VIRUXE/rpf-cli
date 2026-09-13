@@ -105,7 +105,7 @@ enum Commands {
         output: PathBuf,
 
         /// RPF version to create (0, 2, 3, 4, 6, 7)
-        #[arg(short, long, default_value = "7")]
+        #[arg(long, default_value = "7")]
         version: u8,
 
         /// Encryption mode (none, open, ng)
@@ -155,5 +155,20 @@ fn main() -> Result<()> {
             let exe = cli.exe.context("--exe is required to extract keys")?;
             keys::extract(&keys::resolve_exe(&exe)?, &output)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// Ensures clap's own invariants hold for the CLI definition (e.g. no
+    /// duplicate short flags within a subcommand). This catches regressions
+    /// like `-v` being claimed by both the global `--verbose` and a
+    /// subcommand-local argument before they can panic at runtime.
+    #[test]
+    fn cli_debug_assert() {
+        Cli::command().debug_assert();
     }
 }
