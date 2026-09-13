@@ -19,8 +19,8 @@ list          List files, optionally filtered by pattern
 extract       Extract files, with --recursive to descend into nested archives
 verify        Verify archive integrity
 tree          Display contents as a tree
-textures      Export textures from a .ytd/.ydr/.ydd/.yft as PNG/JPG/WebP (or DDS with --dds)
-screenshot    Render a .ydr/.ydd/.yft to an image
+textures      Export textures from a .ytd/.ydr/.ydd/.yft as PNG/JPG/WebP (alias: ytd; --dds for raw DDS)
+screenshot    Render a .ydr/.ydd/.yft to an image (auto-framed, multi-view, external --ytd)
 create        Create an archive from a directory
 extract-keys  Write the keys out to disk for reuse with --keys
 ```
@@ -32,6 +32,40 @@ encrypted, such as FiveM resource packs, need no setup at all:
 rpf tree resource.rpf
 rpf extract resource.rpf -o ./out
 ```
+
+## Images for humans and LLMs
+
+Both image commands write ordinary picture files, so you can look at a model or
+a texture without a modelling tool, and a vision model can read the result.
+
+```sh
+rpf textures "<GTA V>/x64a.rpf" binoculars.ytd                      # PNGs into ./binoculars
+rpf textures "<GTA V>/x64a.rpf" binoculars.ytd --format webp --max-size 512 --sheet
+rpf textures "<GTA V>/x64e.rpf" prop_barrel_01a.ydr                 # textures embedded in a drawable
+rpf screenshot "<GTA V>/x64e.rpf" prop_barrel_01a.ydr --views front,iso --grid
+rpf screenshot "<GTA V>/x64e.rpf" prop_barrel_01a.ydr --ytd prop_barrel_01a
+rpf screenshot dlc.rpf adder.yft --views left,front --size 1280x720
+```
+
+Line by line: every texture in a dictionary lands in a folder named after it;
+`--sheet` adds one labelled contact sheet of the lot, here as WebP capped at
+512 px; a drawable works the same way, exporting the textures baked into it;
+`screenshot` renders the model itself from as many angles as you name and
+`--grid` collects them into a single labelled image; `--ytd` supplies the
+textures a drawable references but does not carry; and `--size` sets the
+resolution of each view.
+
+PNG is lossless and the best default for vision models. WebP output is
+lossless-only, JPEG drops the alpha channel, and `--max-size` keeps files small
+without costing you anything — models downscale past roughly 1500 px anyway.
+Textures a model asks for but no dictionary supplies are drawn flat grey and
+listed by name, so the output itself tells you which `--ytd` to pass next. A
+YFT renders its main body only: wheels and breakable parts are separate
+drawables and do not appear. Retail `x64*.rpf` archives keep their drawables
+inside nested RPFs, so extract the nested rpf first (`rpf extract "<GTA V>/x64e.rpf"
+"*vehicles.rpf" -o ./nested`) and point the command at that. The old `ytd`
+command still works as an alias for `textures`, and `--dds` restores its
+original raw-DDS output.
 
 ## Keys
 
