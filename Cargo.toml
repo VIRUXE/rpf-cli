@@ -19,7 +19,7 @@ thiserror = "1.0"
 log = "0.4"
 env_logger = "0.11"
 clap = { version = "4.5", features = ["derive", "env"] }
-rpf-archive = "0.7.4"
+rpf-archive = { path = "../rpf-archive-rs" } # switch back to "0.8" once published
 
 [dev-dependencies]
 tempfile = "3.10"

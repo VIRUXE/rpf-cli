@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 mod rpf;
 mod commands;
 mod keys;
+mod resources;
 mod utils;
 
-use commands::{info, list, extract, verify, tree, ytd, create};
+use commands::{info, list, extract, verify, tree, textures, create};
 use rpf::GtaKeys;
 
 #[derive(Parser)]
@@ -87,18 +88,9 @@ enum Commands {
         depth: Option<usize>,
     },
 
-    /// Extract textures from a .ytd file inside an RPF archive as DDS files
-    Ytd {
-        /// Path to the RPF archive
-        archive: PathBuf,
-
-        /// Name of the .ytd file inside the archive (e.g. "vehicles.ytd")
-        ytd: String,
-
-        /// Output directory (default: ytd stem)
-        #[arg(short, long, value_name = "DIR")]
-        output: Option<PathBuf>,
-    },
+    /// Export textures from a .ytd/.ydr/.ydd/.yft as PNG/JPG/WebP (or DDS with --dds)
+    #[command(alias = "ytd")]
+    Textures(textures::TexturesArgs),
 
     /// Create an RPF archive from a directory
     Create {
@@ -151,9 +143,7 @@ fn main() -> Result<()> {
         Commands::Extract     { archive, output, pattern, recursive } => extract::run(&archive, output.as_deref(), pattern.as_deref(), recursive, keys.as_ref()),
         Commands::Verify      { archive }                    => verify::run(&archive, keys.as_ref()),
         Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys.as_ref()),
-        Commands::Ytd         { archive, ytd: ytd_name, output } => {
-            ytd::run(&archive, &ytd_name, output.as_deref(), keys.as_ref())
-        }
+        Commands::Textures(args)                             => textures::run(&args, keys.as_ref()),
         Commands::Create { input, output, version, encryption } => {
             create::run(&input, &output, version, &encryption, keys.as_ref())
         }
