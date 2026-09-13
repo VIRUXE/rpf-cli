@@ -19,7 +19,7 @@ thiserror = "1.0"
 log = "0.4"
 env_logger = "0.11"
 clap = { version = "4.5", features = ["derive", "env"] }
-rpf-archive = { path = "../rpf-archive-rs" } # switch back to "0.8" once published
+rpf-archive = { version = "0.8", path = "../rpf-archive-rs" } # path wins locally; version resolves once 0.8.0 is published
 
 [dev-dependencies]
 tempfile = "3.10"

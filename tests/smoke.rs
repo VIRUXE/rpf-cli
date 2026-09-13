@@ -27,6 +27,49 @@ fn rpf(args: &[&str]) -> Output {
     output
 }
 
+/// Checks a per-texture stdout line against the frozen format:
+/// `  <name> — <w>x<h>x<d> <format> <levels> mip(s) (<bytes> bytes)`.
+/// No regex crate is used: the line is hand-parsed token by token.
+fn assert_per_texture_line(line: &str) {
+    let rest = line
+        .strip_prefix("  ")
+        .unwrap_or_else(|| panic!("line missing leading two spaces: {line:?}"));
+    let (name, rest) = rest
+        .split_once(" — ")
+        .unwrap_or_else(|| panic!("line missing ' — ' separator: {line:?}"));
+    assert!(!name.is_empty(), "empty texture name in line: {line:?}");
+
+    let tokens: Vec<&str> = rest.split_whitespace().collect();
+    assert_eq!(tokens.len(), 6, "unexpected token count in line: {line:?} -> {tokens:?}");
+    let (dims, format, levels, mip_word, bytes_open, bytes_close) =
+        (tokens[0], tokens[1], tokens[2], tokens[3], tokens[4], tokens[5]);
+
+    let dim_parts: Vec<&str> = dims.split('x').collect();
+    assert_eq!(dim_parts.len(), 3, "dims '{dims}' is not WxHxD in line: {line:?}");
+    for part in &dim_parts {
+        assert!(
+            !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()),
+            "non-numeric dim '{part}' in line: {line:?}"
+        );
+    }
+
+    assert!(!format.is_empty(), "empty format in line: {line:?}");
+    assert!(
+        !levels.is_empty() && levels.chars().all(|c| c.is_ascii_digit()),
+        "levels '{levels}' is not numeric in line: {line:?}"
+    );
+    assert_eq!(mip_word, "mip(s)", "expected 'mip(s)' in line: {line:?}");
+
+    let bytes_num = bytes_open
+        .strip_prefix('(')
+        .unwrap_or_else(|| panic!("expected '(<n>' in line: {line:?}"));
+    assert!(
+        !bytes_num.is_empty() && bytes_num.chars().all(|c| c.is_ascii_digit()),
+        "byte count '{bytes_num}' is not numeric in line: {line:?}"
+    );
+    assert_eq!(bytes_close, "bytes)", "expected 'bytes)' in line: {line:?}");
+}
+
 fn stdout_of(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
@@ -77,10 +120,19 @@ fn textures_and_screenshot_produce_readable_images() {
     let x64a = format!("{gtav}/x64a.rpf");
 
     // 1. Export a texture dictionary, capped and with a contact sheet.
-    rpf(&[
+    let textures_output = rpf(&[
         "textures", &x64a, "binoculars.ytd",
         "-o", tex_dir.to_str().unwrap(), "--sheet", "--max-size", "256",
     ]);
+
+    // Pin the per-texture stdout format: "  <name> — WxHxD <format> N mip(s) (N bytes)".
+    let stdout = stdout_of(&textures_output);
+    let per_texture_lines: Vec<&str> =
+        stdout.lines().filter(|line| line.starts_with("  ") && line.contains(" — ")).collect();
+    assert!(!per_texture_lines.is_empty(), "no per-texture lines in stdout:\n{stdout}");
+    for line in &per_texture_lines {
+        assert_per_texture_line(line);
+    }
 
     let sheet = tex_dir.join("binoculars_sheet.png");
     assert!(sheet.is_file(), "the contact sheet is missing");
@@ -96,6 +148,17 @@ fn textures_and_screenshot_produce_readable_images() {
         let image = decode(png);
         let longest = image.width().max(image.height());
         assert!(longest <= 256, "{} is {longest}px, over the 256px cap", png.display());
+    }
+
+    // 1b. `ytd` alias + `--dds` restores raw DDS output.
+    let dds_dir = tmp.path().join("dds");
+    rpf(&["ytd", &x64a, "binoculars.ytd", "-o", dds_dir.to_str().unwrap(), "--dds"]);
+    let dds_files = files_with_extension(&dds_dir, "dds");
+    assert!(!dds_files.is_empty(), "no .dds files written to {}", dds_dir.display());
+    for dds in &dds_files {
+        let bytes = std::fs::read(dds).unwrap_or_else(|err| panic!("{}: {err}", dds.display()));
+        assert!(bytes.len() >= 4, "{} is too short to be a DDS file", dds.display());
+        assert_eq!(&bytes[..4], b"DDS ", "{} does not start with the DDS magic", dds.display());
     }
 
     // 2. Render a drawable. Retail archives keep drawables inside nested RPFs,

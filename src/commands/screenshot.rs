@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use rpf_archive::{compose_sheet, encode_image, render_views, DrawableEntry, ImageFormat,
                   LodLevel, RenderOptions, SheetItem, SheetOptions, TextureSet, View};
 
-use crate::resources::{embedded_textures, file_stem, load_drawables, load_texture_dictionary};
+use crate::resources::{embedded_textures, file_stem, load_drawables, load_texture_dictionary, sanitize};
 use crate::rpf::{Archive, GtaKeys};
 
 /// JPEG quality used for the rendered images (PNG/WebP ignore it).
@@ -108,8 +108,22 @@ fn parse_background(value: &str) -> Result<[u8; 4], String> {
     Ok([byte(0), byte(2), byte(4), 255])
 }
 
-/// True when `filter` selects the entry: a case-insensitive name match, or a
-/// `0x…` literal equal to the entry's hash.
+/// Strips RAGE's internal `.#dr`/`.#dd`/`.#ft` suffix (marking the resource
+/// type of the entry the name was read from) so labels, file names and
+/// `--entry` filters see the plain name underneath.
+fn strip_rage_suffix(name: &str) -> &str {
+    let lower = name.to_ascii_lowercase();
+    for suffix in [".#dr", ".#dd", ".#ft"] {
+        if lower.ends_with(suffix) {
+            return &name[..name.len() - suffix.len()];
+        }
+    }
+    name
+}
+
+/// True when `filter` selects the entry: a case-insensitive name match
+/// (ignoring RAGE's internal suffix on either side), or a `0x…` literal equal
+/// to the entry's hash.
 fn entry_matches(name: &str, hash: u32, filter: &str) -> bool {
     let filter = filter.trim();
 
@@ -119,17 +133,7 @@ fn entry_matches(name: &str, hash: u32, filter: &str) -> bool {
         }
     }
 
-    name.eq_ignore_ascii_case(filter)
-}
-
-/// Reduces an entry name to characters that are safe in a file name.
-fn sanitize(name: &str) -> String {
-    let cleaned: String = name
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
-        .collect();
-
-    if cleaned.is_empty() { "entry".to_string() } else { cleaned }
+    strip_rage_suffix(name).eq_ignore_ascii_case(strip_rage_suffix(filter))
 }
 
 /// Builds an output file name: `<stem>[_<entry>][_<view>].<ext>`. `entry` is
@@ -153,7 +157,7 @@ fn entry_label(entry: &DrawableEntry) -> String {
     if entry.name.is_empty() {
         format!("0x{:08X}", entry.hash)
     } else {
-        entry.name.clone()
+        strip_rage_suffix(&entry.name).to_string()
     }
 }
 
@@ -176,7 +180,7 @@ fn build_texture_set(
                 println!("Using texture dictionary {} ({} texture(s))", fallback, textures.len());
                 report_failed(&set.push_layer(&textures), &fallback);
             }
-            Err(_) => println!("No texture dictionary {} found", fallback),
+            Err(err) => println!("No texture dictionary {} found: {}", fallback, err),
         }
         return set;
     }
@@ -365,6 +369,21 @@ mod tests {
         assert!(!entry_matches("prop_barrel_01a", 0x1234_5678, "0xdeadbeef"));
         // A malformed 0x literal falls back to a name comparison.
         assert!(!entry_matches("prop_barrel_01a", 0x1234_5678, "0xzz"));
+    }
+
+    #[test]
+    fn strip_rage_suffix_removes_known_suffixes() {
+        assert_eq!(strip_rage_suffix("prop_x.#dr"), "prop_x");
+        assert_eq!(strip_rage_suffix("prop_x.#DD"), "prop_x");
+        assert_eq!(strip_rage_suffix("prop_x.#ft"), "prop_x");
+        assert_eq!(strip_rage_suffix("prop_x"), "prop_x");
+    }
+
+    #[test]
+    fn entry_filter_ignores_rage_suffix_on_either_side() {
+        assert!(entry_matches("prop_x.#dr", 0x1234_5678, "prop_x"));
+        assert!(entry_matches("prop_x", 0x1234_5678, "prop_x.#dr"));
+        assert!(entry_matches("prop_x.#dr", 0x1234_5678, "prop_x.#dr"));
     }
 
     #[test]

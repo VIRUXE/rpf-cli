@@ -41,11 +41,16 @@ a texture without a modelling tool, and a vision model can read the result.
 ```sh
 rpf textures "<GTA V>/x64a.rpf" binoculars.ytd                      # PNGs into ./binoculars
 rpf textures "<GTA V>/x64a.rpf" binoculars.ytd --format webp --max-size 512 --sheet
-rpf textures "<GTA V>/x64e.rpf" prop_barrel_01a.ydr                 # textures embedded in a drawable
-rpf screenshot "<GTA V>/x64e.rpf" prop_barrel_01a.ydr --views front,iso --grid
-rpf screenshot "<GTA V>/x64e.rpf" prop_barrel_01a.ydr --ytd prop_barrel_01a
-rpf screenshot dlc.rpf adder.yft --views left,front --size 1280x720
+rpf extract "<GTA V>/x64b.rpf" -o ./nested "*icons.rpf"
+rpf screenshot ./nested/levels/gta5/generic/icons.rpf prop_mk_arrow_3d.ydr --views front,iso --grid
+rpf textures  ./nested/levels/gta5/generic/icons.rpf prop_mk_arrow_3d.ydr
 ```
+
+Retail `x64*.rpf` archives keep drawables inside nested RPFs, so a drawable has
+to be extracted to disk before either command can open it — verify the exact
+extracted path with the binary, since it mirrors the nested archive's own
+folder layout (using `GTAV_PATH="C:/Program Files (x86)/Steam/steamapps/common/Grand Theft Auto V"`
+above).
 
 Line by line: every texture in a dictionary lands in a folder named after it;
 `--sheet` adds one labelled contact sheet of the lot, here as WebP capped at
@@ -53,21 +58,20 @@ Line by line: every texture in a dictionary lands in a folder named after it;
 `screenshot` renders the model itself from as many angles as you name and
 `--grid` collects them into a single labelled image; `--ytd` supplies the
 textures a drawable references but does not carry; and `--size` sets the
-resolution of each view.
+resolution of each view. The `--grid` sheet always uses its own dark
+background, regardless of what `--background` is set to.
 
 PNG is lossless and the best default for vision models. WebP output is
-lossless-only, JPEG drops the alpha channel, and `--max-size` keeps files small
-without costing you anything — models downscale past roughly 1500 px anyway.
-Textures a model asks for but no dictionary supplies are drawn flat grey and
-listed by name, so the output itself tells you which `--ytd` to pass next. A
-YFT renders its main body only: wheels and breakable parts are separate
-drawables and do not appear. Entries in a drawable dictionary (`.ydd`) mostly
-share one name — the file's own — so they are reported and written out as
-`0x<hash>` instead, and that hash is what `--entry` takes to pick one of them. Retail `x64*.rpf` archives keep their drawables
-inside nested RPFs, so extract the nested rpf first (`rpf extract "<GTA V>/x64e.rpf"
-"*vehicles.rpf" -o ./nested`) and point the command at that. The old `ytd`
-command still works as an alias for `textures`, and `--dds` restores its
-original raw-DDS output.
+lossless-only, JPEG drops the alpha channel, and `--max-size` keeps files
+small without costing you anything — models downscale past roughly 1500 px
+anyway. Textures a model asks for but no dictionary supplies are drawn flat
+grey and listed by name, so the output itself tells you which `--ytd` to pass
+next. A YFT renders its main body only: wheels and breakable parts are
+separate drawables and do not appear. Entries in a drawable dictionary
+(`.ydd`) mostly share one name — the file's own — so they are reported and
+written out as `0x<hash>` instead, and that hash is what `--entry` takes to
+pick one of them. The old `ytd` command still works as an alias for
+`textures`, and `--dds` restores its original raw-DDS output.
 
 ## Keys
 
@@ -78,8 +82,8 @@ install. Point the tool at the game once and forget about it:
 export GTAV_PATH="<GTA V>"          # or the full path to GTA5.exe
 rpf list "<GTA V>/x64a.rpf" "*.ytd"
 rpf textures "<GTA V>/x64a.rpf" binoculars.ytd
-rpf screenshot "<GTA V>/x64e.rpf" prop_barrel_01a.ydr --views front,iso --grid
-rpf screenshot "<GTA V>/x64e.rpf" prop_barrel_01a.ydr --ytd prop_barrel_01a
+rpf extract "<GTA V>/x64b.rpf" -o ./nested "*icons.rpf"
+rpf screenshot ./nested/levels/gta5/generic/icons.rpf prop_mk_arrow_3d.ydr --views front,iso --grid
 ```
 
 `--exe <PATH>` does the same thing per-run and overrides the variable. Either
@@ -104,6 +108,23 @@ keys and decrypt tables, encrypting them with the AES key, and masking the
 result with a seeded .NET PRNG stream. Unwrapping therefore needs an AES key
 from a real game executable, so the keys stay inert without one. The key
 material itself is the same across game versions — extracting once is enough.
+
+## Releasing
+
+`rpf-cli` depends on `rpf-archive` by path (for local development against the
+sibling checkout) with a `version` fallback so a standalone checkout, or CI
+that clones only this repo, can still resolve it from crates.io. Before
+cutting a release:
+
+1. Publish `rpf-archive` 0.8.0 to crates.io first (the version this crate's
+   `Cargo.toml` currently pins).
+2. Drop the `path = "../rpf-archive-rs"` from the `rpf-archive` dependency
+   line so the build resolves the published crate.
+3. Regenerate `Cargo.lock` (`cargo update -p rpf-archive`).
+4. Bump this crate's version in `Cargo.toml`.
+5. Tag the release.
+
+Publishing itself is a manual, deliberate step — nothing here does it for you.
 
 ## Acknowledgements
 

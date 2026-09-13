@@ -14,9 +14,12 @@ use crate::rpf::{Archive, GtaKeys};
 /// used by .ytd/.ydr/.ydd/.yft).
 pub fn load_resource(archive: &Archive, name: &str, keys: Option<&GtaKeys>) -> Result<Vec<u8>> {
     let name_lower = name.to_lowercase();
-    let file_ref = archive
-        .find_file(&name_lower)
-        .with_context(|| format!("'{}' not found in archive", name))?;
+    let file_ref = archive.find_file(&name_lower).with_context(|| {
+        format!(
+            "'{}' not found in archive (retail x64*.rpf keep drawables in nested .rpf files — extract the nested archive first)",
+            name
+        )
+    })?;
 
     if !matches!(archive.entry_kind(file_ref), RpfEntryKind::ResourceFile { .. }) {
         anyhow::bail!("'{}' is not a resource file", name);
@@ -80,6 +83,17 @@ pub fn embedded_textures(entries: &[DrawableEntry]) -> Vec<&YtdTexture> {
     textures
 }
 
+/// Reduces a name to characters that are safe in a file name: a crafted name
+/// containing `..`/`/` must not be able to escape the destination directory.
+pub fn sanitize(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+
+    if cleaned.is_empty() { "entry".to_string() } else { cleaned }
+}
+
 /// The file stem of a (possibly archive-relative) path: `"a/b/prop_x.ydr"` ->
 /// `"prop_x"`.
 pub fn file_stem(name: &str) -> String {
@@ -100,6 +114,13 @@ mod tests {
         assert_eq!(file_stem("prop_x.ydr"), "prop_x");
         assert_eq!(file_stem("prop_x"), "prop_x");
         assert_eq!(file_stem("a\\b\\vehicles.ytd"), "vehicles");
+    }
+
+    #[test]
+    fn sanitize_strips_path_traversal_characters() {
+        assert_eq!(sanitize("../../etc/passwd"), "______etc_passwd");
+        assert_eq!(sanitize("prop_x"), "prop_x");
+        assert_eq!(sanitize(""), "entry");
     }
 
     #[test]

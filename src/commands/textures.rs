@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use rpf_archive::{compose_sheet, encode_image, fit_max_size, image, to_rgba_image,
                    DrawableKind, ImageFormat, SheetItem, SheetOptions, YtdTexture};
 
-use crate::resources::{embedded_textures, file_stem, load_drawables, load_texture_dictionary};
+use crate::resources::{embedded_textures, file_stem, load_drawables, load_texture_dictionary, sanitize};
 use crate::rpf::{Archive, GtaKeys};
 
 #[derive(clap::Args)]
@@ -36,11 +36,11 @@ pub struct TexturesArgs {
     pub dds: bool,
 
     /// JPEG quality 1-100 (ignored for png/webp)
-    #[arg(long, default_value = "90")]
+    #[arg(long, default_value = "90", value_parser = clap::value_parser!(u8).range(1..=100))]
     pub quality: u8,
 
     /// Contact-sheet cell size in pixels
-    #[arg(long, default_value = "256")]
+    #[arg(long, default_value = "256", value_parser = clap::value_parser!(u32).range(32..=2048))]
     pub cell: u32,
 }
 
@@ -92,7 +92,7 @@ pub fn run(args: &TexturesArgs, keys: Option<&GtaKeys>) -> Result<()> {
 
     let mut exported = 0usize;
     let mut failed = 0usize;
-    let mut sheet_items: Vec<(String, image::RgbaImage)> = Vec::new();
+    let mut sheet_items: Vec<(String, image::RgbaImage, &YtdTexture)> = Vec::new();
 
     for Named { name, tex } in &named {
         println!(
@@ -105,7 +105,7 @@ pub fn run(args: &TexturesArgs, keys: Option<&GtaKeys>) -> Result<()> {
         );
 
         if args.dds {
-            let dds_path = out_dir.join(format!("{}.dds", name));
+            let dds_path = out_dir.join(format!("{}.dds", sanitize(name)));
             match std::fs::write(&dds_path, tex.to_dds()) {
                 Ok(()) => exported += 1,
                 Err(err) => {
@@ -123,11 +123,11 @@ pub fn run(args: &TexturesArgs, keys: Option<&GtaKeys>) -> Result<()> {
             }
 
             if args.sheet {
-                sheet_items.push((name.clone(), img.clone()));
+                sheet_items.push((name.clone(), img.clone(), *tex));
             }
 
             let encoded = encode_image(&img, args.format, args.quality)?;
-            let out_path = out_dir.join(format!("{}.{}", name, args.format.extension()));
+            let out_path = out_dir.join(format!("{}.{}", sanitize(name), args.format.extension()));
             std::fs::write(&out_path, encoded)
                 .with_context(|| format!("failed to write {}", out_path.display()))?;
             Ok(())
@@ -152,8 +152,8 @@ pub fn run(args: &TexturesArgs, keys: Option<&GtaKeys>) -> Result<()> {
         } else if !sheet_items.is_empty() {
             let items: Vec<SheetItem<'_>> = sheet_items
                 .iter()
-                .map(|(name, img)| SheetItem {
-                    label: format!("{} {}x{} {}", name, img.width(), img.height(), args.format),
+                .map(|(name, img, tex)| SheetItem {
+                    label: format!("{} {}x{} {}", name, img.width(), img.height(), tex.format),
                     image: img,
                 })
                 .collect();
