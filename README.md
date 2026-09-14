@@ -127,8 +127,10 @@ archive's own folder layout (`./nested/levels/gta5/vehicles.rpf` above).
 ### Render a model to an image
 
 `screenshot` frames the model automatically and renders it from any of six
-fixed angles (`front`, `back`, `left`, `right`, `top`, `iso`). `--grid` collects
-the views into one labelled image:
+fixed angles (`front`, `back`, `left`, `right`, `top`, `iso`; a view named
+twice is rendered once). `--grid` collects the views into one labelled image,
+always on its own dark background so the labels stay legible whatever
+`--background` the renders use:
 
 ```sh
 rpf screenshot ./nested/models/cdimages/weapons.rpf w_ar_carbinerifle.ydr --views front,top,iso --grid

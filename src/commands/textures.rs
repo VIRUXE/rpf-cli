@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use rpf_archive::{compose_sheet, encode_image, fit_max_size, image, to_rgba_image,
                    DrawableKind, ImageFormat, SheetItem, SheetOptions, YtdTexture};
 
-use crate::resources::{embedded_textures, file_stem, load_drawables, load_texture_dictionary, sanitize};
+use crate::resources::{embedded_textures, extension_of, file_stem, load_drawables, load_texture_dictionary,
+                       sanitize};
 use crate::rpf::{Archive, GtaKeys};
 
 #[derive(clap::Args)]
@@ -51,14 +52,14 @@ struct Named<'a> {
 }
 
 fn textures_from_file(archive: &Archive, args: &TexturesArgs, keys: Option<&GtaKeys>) -> Result<Vec<YtdTexture>> {
-    let ext = Path::new(&args.file).extension().and_then(|e| e.to_str()).unwrap_or("");
+    let ext = extension_of(&args.file);
 
     if ext.eq_ignore_ascii_case("ytd") {
         return load_texture_dictionary(archive, &args.file, keys);
     }
 
-    if DrawableKind::from_extension(ext).is_some() {
-        let entries = load_drawables(archive, &args.file, keys)?;
+    if let Some(kind) = DrawableKind::from_extension(ext) {
+        let entries = load_drawables(archive, &args.file, kind, keys)?;
         return Ok(embedded_textures(&entries).into_iter().cloned().collect());
     }
 

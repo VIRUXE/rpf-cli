@@ -39,7 +39,8 @@ pub struct ScreenshotArgs {
     #[arg(long, default_value = "1024x1024", value_parser = parse_size)]
     pub size: (u32, u32),
 
-    /// Also combine all views into one labelled grid image
+    /// Also combine all views into one labelled grid image (always on a dark
+    /// background so the labels stay legible, whatever --background is)
     #[arg(long)]
     pub grid: bool,
 
@@ -167,6 +168,21 @@ fn image_file_name(stem: &str, entry: Option<&str>, view: Option<&str>, ext: &st
         name.push_str(view);
     }
     format!("{name}.{ext}")
+}
+
+/// The views to render, each once, in the order first asked for; nothing
+/// asked for means the default iso view.
+fn unique_views(views: &[View]) -> Vec<View> {
+    let mut unique: Vec<View> = Vec::with_capacity(views.len());
+    for view in views {
+        if !unique.contains(view) {
+            unique.push(*view);
+        }
+    }
+    if unique.is_empty() {
+        unique.push(View::Iso);
+    }
+    unique
 }
 
 /// The label an entry is reported and named by.
@@ -303,7 +319,7 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
     std::fs::create_dir_all(&out_dir)
         .with_context(|| format!("failed to create {}", out_dir.display()))?;
 
-    let views: Vec<View> = if args.views.is_empty() { vec![View::Iso] } else { args.views.clone() };
+    let views = unique_views(&args.views);
     let (width, height) = args.size;
     let ext = args.format.extension();
     let many_entries = entries.len() > 1;
@@ -563,6 +579,15 @@ mod tests {
         assert_eq!(renderables[0].label, "prop_x");
         assert_eq!(renderables[0].hash, 0x1234_5678);
         assert_eq!(renderables[0].parts.len(), 1);
+    }
+
+    /// `--views iso,front,iso` renders iso once; order of first appearance
+    /// is kept and an empty list means the default iso.
+    #[test]
+    fn views_are_rendered_once_each_in_first_seen_order() {
+        assert_eq!(unique_views(&[View::Iso, View::Front, View::Iso]), vec![View::Iso, View::Front]);
+        assert_eq!(unique_views(&[View::Front, View::Front]), vec![View::Front]);
+        assert_eq!(unique_views(&[]), vec![View::Iso]);
     }
 
     #[test]
