@@ -149,6 +149,9 @@ rpf screenshot ./nested/levels/gta5/vehicles.rpf adder.yft --views front,left,is
 
 Textures a model asks for but no dictionary supplies are drawn flat grey and
 listed by name, so the output itself tells you which `--ytd` to pass next.
+Geometries whose shader names no diffuse texture at all (lights, glass) are
+grey too, but counted apart as `N with no diffuse`: no dictionary will fill
+those in.
 
 A YFT is rendered as one piece: its main body, posed by the fragment's default
 bone transforms, plus every physics child that carries a mesh, placed by its

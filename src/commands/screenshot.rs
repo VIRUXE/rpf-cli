@@ -185,6 +185,29 @@ fn unique_views(views: &[View]) -> Vec<View> {
     unique
 }
 
+/// The one-line summary printed per rendered entry. Geometries whose shader
+/// names no diffuse texture are called out separately from the untextured
+/// total, since no `--ytd` can supply one; the clause is left out when
+/// there are none. `parts` is the composite suffix, already comma-led.
+fn summary_line(label: &str, report: &rpf_archive::RenderReport, parts: &str) -> String {
+    let no_diffuse = if report.geometries_without_diffuse > 0 {
+        format!(", {} with no diffuse", report.geometries_without_diffuse)
+    } else {
+        String::new()
+    };
+    format!(
+        "{}: {} triangles, {} geometries ({} untextured{}), lod {}, bounds {}{}",
+        label,
+        report.triangles,
+        report.geometries,
+        report.untextured_geometries,
+        no_diffuse,
+        report.lod.map(|lod| lod.as_str()).unwrap_or("none"),
+        if report.bounds_computed { "computed" } else { "from file" },
+        parts,
+    )
+}
+
 /// The label an entry is reported and named by.
 fn entry_label(entry: &DrawableEntry) -> String {
     label_for(&entry.name, entry.hash)
@@ -354,16 +377,7 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
         } else {
             String::new()
         };
-        println!(
-            "{}: {} triangles, {} geometries ({} untextured), lod {}, bounds {}{}",
-            label,
-            report.triangles,
-            report.geometries,
-            report.untextured_geometries,
-            report.lod.map(|lod| lod.as_str()).unwrap_or("none"),
-            if report.bounds_computed { "computed" } else { "from file" },
-            parts,
-        );
+        println!("{}", summary_line(label, &report, &parts));
 
         if !report.missing_textures.is_empty() {
             println!("Missing textures:");
@@ -588,6 +602,28 @@ mod tests {
         assert_eq!(unique_views(&[View::Iso, View::Front, View::Iso]), vec![View::Iso, View::Front]);
         assert_eq!(unique_views(&[View::Front, View::Front]), vec![View::Front]);
         assert_eq!(unique_views(&[]), vec![View::Iso]);
+    }
+
+    /// Geometries whose shader names no diffuse at all are called out, since
+    /// no `--ytd` can fix them; when there are none the line is unchanged.
+    #[test]
+    fn summary_line_mentions_geometries_with_no_diffuse_only_when_present() {
+        let mut report = rpf_archive::RenderReport::default();
+        report.triangles = 10;
+        report.geometries = 4;
+        report.untextured_geometries = 2;
+        report.lod = Some(LodLevel::High);
+
+        assert_eq!(
+            summary_line("prop", &report, ""),
+            "prop: 10 triangles, 4 geometries (2 untextured), lod high, bounds from file"
+        );
+
+        report.geometries_without_diffuse = 1;
+        assert_eq!(
+            summary_line("prop", &report, ", 5 parts (4 wheels)"),
+            "prop: 10 triangles, 4 geometries (2 untextured, 1 with no diffuse), lod high, bounds from file, 5 parts (4 wheels)"
+        );
     }
 
     #[test]
