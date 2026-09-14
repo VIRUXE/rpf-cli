@@ -60,16 +60,13 @@ fn cache_entry_for(exe_path: &Path, cache_root: &Path) -> Option<PathBuf> {
     Some(cache_root.join(cache_entry_name(meta.len(), modified)))
 }
 
-/// `~/.rpf-cli/keys` (the home directory is `USERPROFILE` on Windows, `HOME`
-/// elsewhere); `RPF_KEYS_CACHE` overrides it.
+/// `~/.rpf-cli/keys` (the home directory is `HOME` first, then
+/// `USERPROFILE`); `RPF_KEYS_CACHE` overrides it.
 fn default_cache_root() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("RPF_KEYS_CACHE") {
         return Some(PathBuf::from(dir));
     }
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)?;
-    Some(home.join(".rpf-cli").join("keys"))
+    Some(crate::paths::config_root()?.join("keys"))
 }
 
 /// Where a cache miss for this executable is stored under the cache root:

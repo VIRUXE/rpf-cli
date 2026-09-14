@@ -21,6 +21,9 @@ Prebuilt Windows and Linux binaries are attached to every
 cargo install --git https://github.com/VIRUXE/rpf-cli
 ```
 
+Already installed? `rpf update install` replaces the binary in place with the
+latest release — see [Updating](#updating).
+
 ## Commands
 
 ```
@@ -33,6 +36,7 @@ tree          Display contents as a tree
 textures      Export textures from a .ytd/.ydr/.ydd/.yft as PNG/JPG/WebP (alias: ytd; --dds for raw DDS)
 screenshot    Render a .ydr/.ydd/.yft to an image (auto-framed, multi-view, external --ytd)
 resource      Inspect a loose resource file, or an entry inside an archive (`resource info`)
+update        Check for a newer release, or update this binary in place
 create        Create an archive from a directory
 extract-keys  Write the keys out to disk for reuse with --keys
 ```
@@ -290,6 +294,28 @@ result with a seeded .NET PRNG stream. Unwrapping therefore needs an AES key
 from a real game executable, so the keys stay inert without one. The key
 material itself is the same across game versions — extracting once is enough.
 
+## Updating
+
+```sh
+rpf update check     # ask GitHub whether a newer release exists
+rpf update install   # download it and replace this binary
+```
+
+`rpf` also checks for a new release passively, at most once every 24 hours,
+and prints a one-line note on stderr when one is found. It only runs when
+stderr is a terminal, so it never fires in scripts or CI, and it never delays
+a command — it is checked in the background and only reported after your
+command has finished. Disable it with `--no-update-check`, the
+`RPF_NO_UPDATE_CHECK` environment variable, or by setting `CI`. The check is
+stamped in `~/.rpf-cli/update-check.json`; set `RPF_UPDATE_CACHE` to put that
+file somewhere else. Network requests go through `ureq` and honour the
+standard `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` environment variables.
+
+`rpf update install` downloads the release asset for your platform along with
+its `SHA256SUMS`, verifies the checksum, and replaces the running binary in
+place — including a binary installed with `cargo install`, since both manage
+the same path. It refuses to install a release published without checksums.
+
 ## Releasing
 
 `rpf-cli` depends on the published [`rpf-archive`](https://github.com/VIRUXE/rpf-archive-rs)
@@ -305,8 +331,12 @@ To cut a release:
    bump the version this crate pins.
 2. Bump this crate's version in `Cargo.toml` and rebuild so `Cargo.lock` follows.
 3. Commit, then `gh release create vX.Y.Z --notes ...` — the tag triggers the
-   `release` workflow, which builds the Linux and Windows binaries and attaches
-   them to that release.
+   `release` workflow, which builds the Linux and Windows binaries, publishes a
+   `SHA256SUMS` for them, and attaches all three to that release.
+
+The asset names (`rpf-linux-x86_64`, `rpf-windows-x86_64.exe`) and the
+`vX.Y.Z` tag shape are a contract with `rpf update`; renaming either breaks
+self-update for everyone already on an installed build.
 
 Publishing itself is a manual, deliberate step — nothing here does it for you.
 

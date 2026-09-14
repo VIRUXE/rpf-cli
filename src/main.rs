@@ -5,10 +5,13 @@ use std::path::{Path, PathBuf};
 mod rpf;
 mod commands;
 mod keys;
+mod paths;
 mod resources;
+mod update;
 mod utils;
 
 use commands::{info, list, extract, verify, tree, textures, screenshot, create, search, resource};
+use commands::update as update_cmd;
 use rpf::GtaKeys;
 
 #[derive(Parser)]
@@ -29,6 +32,11 @@ struct Cli {
     /// precedence over --exe
     #[arg(long, global = true, value_name = "DIR")]
     keys: Option<PathBuf>,
+
+    /// Skip the daily background check for a newer release
+    /// (also RPF_NO_UPDATE_CHECK)
+    #[arg(long, global = true)]
+    no_update_check: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -102,6 +110,9 @@ enum Commands {
     /// Inspect loose resource files (.ydr/.ytd/...) or entries inside an archive
     Resource(resource::ResourceArgs),
 
+    /// Check for a newer release, or update this binary in place
+    Update(update_cmd::UpdateArgs),
+
     /// Create an RPF archive from a directory
     Create {
         /// Directory to pack
@@ -145,24 +156,43 @@ fn main() -> Result<()> {
         env_logger::Env::default().default_filter_or(if cli.verbose { "debug" } else { "info" })
     ).init();
 
-    let keys = load_keys(cli.exe.as_deref(), cli.keys.as_deref())?;
+    // Spawned before the command runs but only reported after it succeeds,
+    // so a real command never waits on the network and the note prints last.
+    let check = update::spawn_background_check(cli.no_update_check);
 
-    match cli.command {
-        Commands::Info        { archive }                    => info::run(&archive, keys.as_ref()),
-        Commands::List        { archive, pattern, detailed } => list::run(&archive, pattern.as_deref(), detailed, keys.as_ref()),
-        Commands::Extract     { archive, output, pattern, recursive } => extract::run(&archive, output.as_deref(), pattern.as_deref(), recursive, keys.as_ref()),
-        Commands::Search(args)                               => search::run(&args, keys.as_ref()),
-        Commands::Verify      { archive }                    => verify::run(&archive, keys.as_ref()),
-        Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys.as_ref()),
-        Commands::Textures(args)                             => textures::run(&args, keys.as_ref()),
-        Commands::Screenshot(args)                           => screenshot::run(&args, keys.as_ref()),
-        Commands::Resource(args)                             => resource::run(&args, keys.as_ref()),
+    let keys = if matches!(cli.command, Commands::Update(_)) {
+        None
+    } else {
+        load_keys(cli.exe.as_deref(), cli.keys.as_deref())?
+    };
+
+    let result = dispatch(cli.command, keys.as_ref(), cli.exe.as_deref());
+
+    if result.is_ok() {
+        update::report_background_check(check);
+    }
+
+    result
+}
+
+fn dispatch(command: Commands, keys: Option<&GtaKeys>, exe: Option<&Path>) -> Result<()> {
+    match command {
+        Commands::Info        { archive }                    => info::run(&archive, keys),
+        Commands::List        { archive, pattern, detailed } => list::run(&archive, pattern.as_deref(), detailed, keys),
+        Commands::Extract     { archive, output, pattern, recursive } => extract::run(&archive, output.as_deref(), pattern.as_deref(), recursive, keys),
+        Commands::Search(args)                               => search::run(&args, keys),
+        Commands::Verify      { archive }                    => verify::run(&archive, keys),
+        Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys),
+        Commands::Textures(args)                             => textures::run(&args, keys),
+        Commands::Screenshot(args)                           => screenshot::run(&args, keys),
+        Commands::Resource(args)                             => resource::run(&args, keys),
+        Commands::Update(args)                               => update_cmd::run(&args),
         Commands::Create { input, output, version, encryption } => {
-            create::run(&input, &output, version, &encryption, keys.as_ref())
+            create::run(&input, &output, version, &encryption, keys)
         }
         Commands::ExtractKeys { output }                     => {
-            let exe = cli.exe.context("--exe is required to extract keys")?;
-            keys::extract(&keys::resolve_exe(&exe)?, &output)
+            let exe = exe.context("--exe is required to extract keys")?;
+            keys::extract(&keys::resolve_exe(exe)?, &output)
         }
     }
 }

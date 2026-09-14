@@ -8,6 +8,7 @@ use rpf_archive::{rage_joaat, RpfBuilder, RpfEncryption};
 fn rpf(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rpf"))
         .args(args)
+        .env("RPF_NO_UPDATE_CHECK", "1")
         .output()
         .expect("failed to run the rpf binary")
 }

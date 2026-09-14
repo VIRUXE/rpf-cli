@@ -60,3 +60,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.inputs.tag || github.ref_name }}" "${{ matrix.asset }}" --clobber
+
+  checksums:
+    name: checksums
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checksum and upload SHA256SUMS
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release download "$tag" -p 'rpf-linux-x86_64' -p 'rpf-windows-x86_64.exe' -D dist --repo "${{ github.repository }}"
+          (cd dist && sha256sum rpf-linux-x86_64 rpf-windows-x86_64.exe > SHA256SUMS)
+          gh release upload "$tag" dist/SHA256SUMS --clobber

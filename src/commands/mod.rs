@@ -8,3 +8,4 @@ pub mod screenshot;
 pub mod create;
 pub mod search;
 pub mod resource;
+pub mod update;
