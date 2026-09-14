@@ -60,20 +60,16 @@ fn cache_entry_for(exe_path: &Path, cache_root: &Path) -> Option<PathBuf> {
     Some(cache_root.join(cache_entry_name(meta.len(), modified)))
 }
 
-/// `%LOCALAPPDATA%\rpf-cli\keys` on Windows, `$XDG_CACHE_HOME/rpf-cli/keys`
-/// or `~/.cache/rpf-cli/keys` elsewhere; `RPF_KEYS_CACHE` overrides both.
+/// `~/.rpf-cli/keys` (the home directory is `USERPROFILE` on Windows, `HOME`
+/// elsewhere); `RPF_KEYS_CACHE` overrides it.
 fn default_cache_root() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("RPF_KEYS_CACHE") {
         return Some(PathBuf::from(dir));
     }
-    let base = if cfg!(windows) {
-        std::env::var_os("LOCALAPPDATA").map(PathBuf::from)?
-    } else if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
-        PathBuf::from(xdg)
-    } else {
-        std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache"))?
-    };
-    Some(base.join("rpf-cli").join("keys"))
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    Some(home.join(".rpf-cli").join("keys"))
 }
 
 /// Where a cache miss for this executable is stored under the cache root:
@@ -104,6 +100,12 @@ mod tests {
     #[test]
     fn cache_entry_name_is_size_and_mtime() {
         assert_eq!(cache_entry_name(123, 456), "123-456");
+    }
+
+    #[test]
+    fn default_cache_lives_in_a_dot_folder_under_home() {
+        let root = default_cache_root().expect("a home directory");
+        assert!(root.ends_with(Path::new(".rpf-cli").join("keys")), "{}", root.display());
     }
 
     #[test]

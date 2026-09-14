@@ -245,8 +245,7 @@ rpf textures "<GTA V>/x64a.rpf" binoculars.ytd
 form takes the executable itself or the folder holding it. Recovering the keys
 from the executable costs a couple of seconds, so the result is cached per
 game build (keyed on the executable's size and modification time) under
-`%LOCALAPPDATA%\rpf-cli\keys` on Windows or `~/.cache/rpf-cli/keys` elsewhere;
-set `RPF_KEYS_CACHE` to put it somewhere else. Later runs load in milliseconds,
+`~/.rpf-cli/keys`; set `RPF_KEYS_CACHE` to put it somewhere else. Later runs load in milliseconds,
 and a game update simply produces a new entry. An unwritable cache is not an
 error, the keys are just recovered every time.
 

@@ -21,7 +21,7 @@ struct Cli {
     verbose: bool,
 
     /// GTA5.exe (or the folder holding it) to read the keys from; the keys are
-    /// cached per game build under the user's cache directory (RPF_KEYS_CACHE overrides)
+    /// cached per game build under ~/.rpf-cli/keys (RPF_KEYS_CACHE overrides)
     #[arg(long, global = true, value_name = "PATH", env = "GTAV_PATH")]
     exe: Option<PathBuf>,
 
