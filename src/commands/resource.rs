@@ -38,6 +38,9 @@ pub struct InfoArgs {
     pub json: bool,
 }
 
+/// "FXAP": the header Cfx.re asset escrow puts on encrypted stream files.
+const FXAP_MAGIC: u32 = 0x5041_5846;
+
 /// The 16-byte RSC7 header plus what could be learnt about the body.
 #[derive(Debug, PartialEq)]
 pub struct Rsc7Header {
@@ -58,6 +61,9 @@ pub fn parse_header(data: &[u8]) -> Result<Rsc7Header> {
     }
 
     let magic = u32::from_le_bytes(data[0..4].try_into().unwrap());
+    if magic == FXAP_MAGIC {
+        anyhow::bail!("FiveM escrow-encrypted asset (magic 'FXAP'); only the server that bought it can decrypt it");
+    }
     if magic == RSC8_MAGIC {
         anyhow::bail!("Gen9 RSC8 resources are not supported (magic 0x{magic:08X})");
     }
@@ -311,6 +317,12 @@ mod tests {
     fn rejects_bad_magic() {
         let err = parse_header(&header(b"XXXX", 0, 0, 0, &[])).unwrap_err().to_string();
         assert!(err.contains("0x58585858"), "{err}");
+    }
+
+    #[test]
+    fn names_fivem_escrow_files() {
+        let err = parse_header(&header(b"FXAP", 0, 0, 0, &[0u8; 32])).unwrap_err().to_string();
+        assert!(err.contains("FiveM escrow"), "{err}");
     }
 
     #[test]

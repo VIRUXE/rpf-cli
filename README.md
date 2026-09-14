@@ -32,6 +32,7 @@ verify        Verify archive integrity
 tree          Display contents as a tree
 textures      Export textures from a .ytd/.ydr/.ydd/.yft as PNG/JPG/WebP (alias: ytd; --dds for raw DDS)
 screenshot    Render a .ydr/.ydd/.yft to an image (auto-framed, multi-view, external --ytd)
+resource      Inspect a loose resource file, or an entry inside an archive (`resource info`)
 create        Create an archive from a directory
 extract-keys  Write the keys out to disk for reuse with --keys
 ```
@@ -184,6 +185,22 @@ PNG is lossless and the best default. WebP output is lossless-only, JPEG drops
 the alpha channel, and `--max-size` caps the longest edge so files stay small.
 The old `ytd` command still works as an alias for `textures`, and `--dds`
 restores its original raw-DDS output.
+
+### Inspect a resource file
+
+```sh
+rpf resource info ./out/prop_my_thing.ydr                   # a loose file, e.g. one you just exported
+rpf resource info --archive "<GTA V>/x64a.rpf" binoculars.ytd
+rpf resource info ./out/prop_my_thing.ydr --json            # one JSON object for scripts
+```
+
+Prints the RSC7 header (version, system/graphics page flags and the sizes they
+encode, whether the body is deflated or stored) and then what the file holds:
+every texture of a `.ytd` in the same per-line format `textures` uses, or, for
+a `.ydr`/`.ydd`/`.yft`, each drawable's bounds, LOD distances, per-LOD model,
+geometry and triangle counts, the shader table with diffuse texture names, and
+the embedded textures. Handy for checking an export before it goes into a
+stream folder: a bad magic or a zero-triangle high LOD shows up immediately.
 
 ### Pictures for vision models
 
