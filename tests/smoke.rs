@@ -201,4 +201,33 @@ fn textures_and_screenshot_produce_readable_images() {
     // A render that is nothing but background means nothing was drawn.
     let drawn = decode(&iso).pixels().filter(|pixel| pixel.0 != [230, 230, 230, 255]).count();
     assert!(drawn > 0, "{} is entirely background", iso.display());
+
+    // 4. `resource info` on an archive entry reuses the per-texture line format.
+    let info = stdout_of(&rpf(&["resource", "info", "binoculars.ytd", "--archive", &x64a]));
+    assert!(info.contains("Format:    RSC7"), "no header in:\n{info}");
+    let per_texture_lines: Vec<&str> =
+        info.lines().filter(|line| line.starts_with("  ") && line.contains(" — ")).collect();
+    assert!(!per_texture_lines.is_empty(), "no per-texture lines in:\n{info}");
+    for line in &per_texture_lines {
+        assert_per_texture_line(line);
+    }
+
+    // 5. ...and on a drawable extracted to disk it describes the geometry.
+    let loose_dir = tmp.path().join("loose");
+    rpf(&["extract", &icons, drawable, "-o", loose_dir.to_str().unwrap()]);
+    let loose = find_file(&loose_dir, Path::new(drawable).file_name().unwrap().to_str().unwrap())
+        .expect("the drawable was not extracted");
+
+    let info = stdout_of(&rpf(&["resource", "info", loose.to_str().unwrap()]));
+    assert!(info.contains("Drawables: 1"), "expected one drawable in:\n{info}");
+    assert!(info.contains("shaders:"), "no shader table in:\n{info}");
+    let triangles: usize = info
+        .lines()
+        .find(|line| line.trim_start().starts_with("high:"))
+        .and_then(|line| line.split_whitespace().rev().nth(1)?.parse().ok())
+        .unwrap_or_else(|| panic!("no high LOD line in:\n{info}"));
+    assert!(triangles > 0, "high LOD has no triangles:\n{info}");
+
+    let json = stdout_of(&rpf(&["resource", "info", loose.to_str().unwrap(), "--json"]));
+    assert!(json.trim().starts_with('{') && json.contains("\"kind\":\"drawables\""), "bad json:\n{json}");
 }
