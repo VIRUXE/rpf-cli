@@ -242,10 +242,15 @@ rpf textures "<GTA V>/x64a.rpf" binoculars.ytd
 ```
 
 `--exe <PATH>` does the same thing per-run and overrides the variable. Either
-form takes the executable itself or the folder holding it. Keys are read
-straight from it each time, which costs under two seconds and writes nothing.
+form takes the executable itself or the folder holding it. Recovering the keys
+from the executable costs a couple of seconds, so the result is cached per
+game build (keyed on the executable's size and modification time) under
+`%LOCALAPPDATA%\rpf-cli\keys` on Windows or `~/.cache/rpf-cli/keys` elsewhere;
+set `RPF_KEYS_CACHE` to put it somewhere else. Later runs load in milliseconds,
+and a game update simply produces a new entry. An unwritable cache is not an
+error, the keys are just recovered every time.
 
-To keep a copy on disk instead, write them out once and use `--keys`, which
+To manage a copy on disk yourself, write it out once and use `--keys`, which
 takes precedence over `--exe`:
 
 ```sh

@@ -20,7 +20,8 @@ struct Cli {
     #[arg(short, long, global = true)]
     verbose: bool,
 
-    /// GTA5.exe (or the folder holding it) to read the keys from
+    /// GTA5.exe (or the folder holding it) to read the keys from; the keys are
+    /// cached per game build under the user's cache directory (RPF_KEYS_CACHE overrides)
     #[arg(long, global = true, value_name = "PATH", env = "GTAV_PATH")]
     exe: Option<PathBuf>,
 
@@ -132,7 +133,7 @@ fn load_keys(exe: Option<&Path>, keys_dir: Option<&Path>) -> Result<Option<GtaKe
     // GTAV_PATH is set in the environment.
     match (keys_dir, exe) {
         (Some(dir), _)  => Ok(Some(GtaKeys::load_from_path(dir)?)),
-        (_, Some(exe))  => Ok(Some(keys::from_exe(&keys::resolve_exe(exe)?)?)),
+        (_, Some(exe))  => Ok(Some(keys::from_exe_cached_default(&keys::resolve_exe(exe)?)?)),
         (None, None)    => Ok(None),
     }
 }
