@@ -7,3 +7,4 @@ pub mod textures;
 pub mod screenshot;
 pub mod create;
 pub mod search;
+pub mod resource;

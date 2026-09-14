@@ -30,6 +30,19 @@ pub fn load_resource(archive: &Archive, name: &str, keys: Option<&GtaKeys>) -> R
         .with_context(|| format!("failed to extract '{}'", name))
 }
 
+/// Raw bytes of a resource: read straight from disk, or, when `archive` is
+/// given, looked up inside that archive by name.
+pub fn load_resource_bytes(file: &str, archive: Option<&Path>, keys: Option<&GtaKeys>) -> Result<Vec<u8>> {
+    match archive {
+        None => fs::read(file).with_context(|| format!("failed to read '{}'", file)),
+        Some(archive_path) => {
+            let archive = Archive::open(archive_path, keys)?;
+            archive.require_keys(keys)?;
+            load_resource(&archive, file, keys)
+        }
+    }
+}
+
 /// Loads and parses `name` (a .ydr, .ydd or .yft) from `archive` into its
 /// list of drawable entries.
 pub fn load_drawables(archive: &Archive, name: &str, keys: Option<&GtaKeys>) -> Result<Vec<DrawableEntry>> {

@@ -8,7 +8,7 @@ mod keys;
 mod resources;
 mod utils;
 
-use commands::{info, list, extract, verify, tree, textures, screenshot, create, search};
+use commands::{info, list, extract, verify, tree, textures, screenshot, create, search, resource};
 use rpf::GtaKeys;
 
 #[derive(Parser)]
@@ -98,6 +98,9 @@ enum Commands {
     /// Render a .ydr/.ydd/.yft to an image
     Screenshot(screenshot::ScreenshotArgs),
 
+    /// Inspect loose resource files (.ydr/.ytd/...) or entries inside an archive
+    Resource(resource::ResourceArgs),
+
     /// Create an RPF archive from a directory
     Create {
         /// Directory to pack
@@ -152,6 +155,7 @@ fn main() -> Result<()> {
         Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys.as_ref()),
         Commands::Textures(args)                             => textures::run(&args, keys.as_ref()),
         Commands::Screenshot(args)                           => screenshot::run(&args, keys.as_ref()),
+        Commands::Resource(args)                             => resource::run(&args, keys.as_ref()),
         Commands::Create { input, output, version, encryption } => {
             create::run(&input, &output, version, &encryption, keys.as_ref())
         }

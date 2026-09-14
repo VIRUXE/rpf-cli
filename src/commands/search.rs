@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use rpf_archive::{rage_joaat, resource::prepare_rsc7};
 
 use crate::rpf::{Archive, FileRef, GtaKeys};
-use crate::utils::matches_pattern;
+use crate::utils::{json_string, matches_pattern};
 
 #[derive(clap::Args)]
 #[command(group = clap::ArgGroup::new("filter").required(true).multiple(true))]
@@ -343,24 +343,6 @@ fn json_hit(hit: &Hit) -> String {
         hit.hash_stem,
         hit.offset.map_or("null".to_string(), |o| o.to_string()),
     )
-}
-
-fn json_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }
 
 #[cfg(test)]
