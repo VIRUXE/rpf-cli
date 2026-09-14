@@ -65,6 +65,22 @@ pub struct ScreenshotArgs {
     /// For .ydd/.yft: render only the entry with this name or 0x hash
     #[arg(long)]
     pub entry: Option<String>,
+
+    /// Body colour (#rrggbb) for vehicle paint shaders, which otherwise render white
+    #[arg(long, value_name = "#RRGGBB", value_parser = parse_paint)]
+    pub paint: Option<[u8; 3]>,
+}
+
+/// Parses a `#rrggbb` paint colour.
+fn parse_paint(value: &str) -> Result<[u8; 3], String> {
+    let hex = value
+        .trim()
+        .strip_prefix('#')
+        .filter(|hex| hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()))
+        .ok_or_else(|| format!("expected #rrggbb, got '{value}'"))?;
+
+    let byte = |at: usize| u8::from_str_radix(&hex[at..at + 2], 16).unwrap_or(0);
+    Ok([byte(0), byte(2), byte(4)])
 }
 
 /// Parses a `WxH` size such as `"1280x720"`.
@@ -243,6 +259,7 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
         lod: args.lod,
         backface_cull: args.cull,
         vertex_colors: args.vertex_colors,
+        paint: args.paint,
         ..Default::default()
     };
 
@@ -346,6 +363,15 @@ mod tests {
         assert_eq!(parse_background("#ff8800"), Ok([255, 136, 0, 255]));
         assert_eq!(parse_background("#FF8800"), Ok([255, 136, 0, 255]));
         assert_eq!(parse_background("#000000"), Ok([0, 0, 0, 255]));
+    }
+
+    #[test]
+    fn parse_paint_hex_only() {
+        assert_eq!(parse_paint("#c81e1e"), Ok([200, 30, 30]));
+        assert_eq!(parse_paint("#FFFFFF"), Ok([255, 255, 255]));
+        assert!(parse_paint("red").is_err());
+        assert!(parse_paint("#fff").is_err());
+        assert!(parse_paint("transparent").is_err());
     }
 
     #[test]

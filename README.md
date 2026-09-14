@@ -150,6 +150,17 @@ listed by name, so the output itself tells you which `--ytd` to pass next. A YFT
 renders its main body only: wheels and breakable parts are separate drawables
 and do not appear.
 
+Vehicle bodies come out white because the paint colour is not in the YFT: the
+game applies it at runtime from carcols metadata. `--paint #rrggbb` tints every
+geometry drawn with a `vehicle_paint*` shader and leaves glass, lights, tyres
+and interiors alone:
+
+```sh
+rpf screenshot ./nested/levels/gta5/vehicles.rpf adder.yft --views front,left,iso --grid --ytd adder --ytd vehshare --paint "#8b1a1a"
+```
+
+![Adder rendered in red paint](docs/images/screenshot-adder-paint-grid.jpg)
+
 ### Transparent backgrounds and translucent materials
 
 `--background` takes `grey` (default), `transparent`, or any `#rrggbb`. With a
