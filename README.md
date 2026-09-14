@@ -146,9 +146,15 @@ rpf screenshot ./nested/levels/gta5/vehicles.rpf adder.yft --views front,left,is
 ![Adder rendered front, left and iso](docs/images/screenshot-adder-grid.jpg)
 
 Textures a model asks for but no dictionary supplies are drawn flat grey and
-listed by name, so the output itself tells you which `--ytd` to pass next. A YFT
-renders its main body only: wheels and breakable parts are separate drawables
-and do not appear.
+listed by name, so the output itself tells you which `--ytd` to pass next.
+
+A YFT is rendered as one piece: its main body, posed by the fragment's default
+bone transforms, plus every physics child that carries a mesh, placed by its
+physics transform. Vehicle wheels are the usual case. A YFT typically ships one
+front and one rear wheel mesh; the other wheel slots borrow those and right-hand
+wheels are mirrored, the same way CodeWalker fills them in. The summary line
+counts the parts drawn, e.g. `5 parts (4 wheels)`. Damaged variants of a part
+are not drawn.
 
 Vehicle bodies come out white because the paint colour is not in the YFT: the
 game applies it at runtime from carcols metadata. `--paint #rrggbb` tints every

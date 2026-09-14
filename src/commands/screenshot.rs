@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
-use rpf_archive::{compose_sheet, encode_image, render_views, DrawableEntry, ImageFormat,
-                  LodLevel, RenderOptions, SheetItem, SheetOptions, TextureSet, View};
+use rpf_archive::{compose_sheet, encode_image, render_parts, wheel_slot, DrawableEntry, ImageFormat,
+                  LodLevel, RenderOptions, RenderPart, SheetItem, SheetOptions, TextureSet, View};
 
-use crate::resources::{embedded_textures, file_stem, load_drawables, load_texture_dictionary, sanitize};
+use crate::resources::{embedded_textures_of, file_stem, load_renderables, load_texture_dictionary, sanitize,
+                       Loaded};
 use crate::rpf::{Archive, GtaKeys};
 
 /// JPEG quality used for the rendered images (PNG/WebP ignore it).
@@ -170,10 +171,66 @@ fn image_file_name(stem: &str, entry: Option<&str>, view: Option<&str>, ext: &st
 
 /// The label an entry is reported and named by.
 fn entry_label(entry: &DrawableEntry) -> String {
-    if entry.name.is_empty() {
-        format!("0x{:08X}", entry.hash)
+    label_for(&entry.name, entry.hash)
+}
+
+fn label_for(name: &str, hash: u32) -> String {
+    if name.is_empty() {
+        format!("0x{hash:08X}")
     } else {
-        strip_rage_suffix(&entry.name).to_string()
+        strip_rage_suffix(name).to_string()
+    }
+}
+
+/// One image set to render: a plain drawable, or a fragment's body with its
+/// wheels and doors placed on it.
+struct Renderable<'a> {
+    label: String,
+    hash: u32,
+    parts: Vec<RenderPart<'a>>,
+    /// Wheel slots drawn (including ones filled from another wheel's mesh).
+    wheels: usize,
+}
+
+/// Lists what to render: each .ydr/.ydd entry on its own; a fragment as one
+/// composite of body plus physics children, followed by its extra drawables.
+fn renderables(loaded: &Loaded) -> Vec<Renderable<'_>> {
+    match loaded {
+        Loaded::Entries(entries) => entries
+            .iter()
+            .map(|entry| Renderable {
+                label: entry_label(entry),
+                hash: entry.hash,
+                parts: vec![RenderPart::new(&entry.drawable)],
+                wheels: 0,
+            })
+            .collect(),
+        Loaded::Fragment(fragment) => {
+            let mut out = Vec::new();
+            if let Some(body) = &fragment.drawable {
+                let name = if fragment.name.is_empty() { &body.name } else { &fragment.name };
+                let fragment_parts = fragment.render_parts();
+                let wheels = fragment_parts
+                    .iter()
+                    .filter(|part| part.bone_tag.is_some_and(|tag| wheel_slot(tag).is_some()))
+                    .count();
+                out.push(Renderable {
+                    label: label_for(name, body.name_hash),
+                    hash: body.name_hash,
+                    parts: fragment_parts.into_iter().map(RenderPart::from).collect(),
+                    wheels,
+                });
+            }
+            for extra in &fragment.extra_drawables {
+                out.push(Renderable {
+                    label: entry_label(extra),
+                    hash: extra.hash,
+                    parts: vec![RenderPart::new(&extra.drawable)],
+                    wheels: 0,
+                });
+            }
+            out
+        }
     }
 }
 
@@ -181,12 +238,12 @@ fn entry_label(entry: &DrawableEntry) -> String {
 fn build_texture_set(
     archive: &Archive,
     args: &ScreenshotArgs,
-    entries: &[DrawableEntry],
+    loaded: &Loaded,
     keys: Option<&GtaKeys>,
 ) -> TextureSet {
     let mut set = TextureSet::new();
 
-    let embedded: Vec<_> = embedded_textures(entries).into_iter().cloned().collect();
+    let embedded: Vec<_> = embedded_textures_of(loaded.drawables()).into_iter().cloned().collect();
     report_failed(&set.push_layer(&embedded), "embedded");
 
     if args.ytd.is_empty() {
@@ -225,10 +282,11 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
     let archive = Archive::open(&args.archive, keys)?;
     archive.require_keys(keys)?;
 
-    let mut entries = load_drawables(&archive, &args.file, keys)?;
+    let loaded = load_renderables(&archive, &args.file, keys)?;
+    let mut entries = renderables(&loaded);
 
     if let Some(filter) = &args.entry {
-        entries.retain(|entry| entry_matches(&entry.name, entry.hash, filter));
+        entries.retain(|entry| entry_matches(&entry.label, entry.hash, filter));
         if entries.is_empty() {
             anyhow::bail!("no entry matching '{}' in '{}'", filter, args.file);
         }
@@ -238,7 +296,7 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
         anyhow::bail!("'{}' holds no drawables", args.file);
     }
 
-    let textures = build_texture_set(&archive, args, &entries, keys);
+    let textures = build_texture_set(&archive, args, &loaded, keys);
 
     let stem = file_stem(&args.file);
     let out_dir = args.output.clone().unwrap_or_else(|| PathBuf::from("."));
@@ -266,8 +324,8 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
     let mut written = 0usize;
 
     for entry in &entries {
-        let label = entry_label(entry);
-        let rendered = render_views(&entry.drawable, &textures, &options, &views)
+        let label = &entry.label;
+        let rendered = render_parts(&entry.parts, &textures, &options, &views)
             .with_context(|| format!("failed to render '{}'", label))?;
 
         let report = rendered
@@ -275,14 +333,20 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
             .map(|(_, _, report)| report.clone())
             .unwrap_or_default();
 
+        let parts = if entry.parts.len() > 1 {
+            format!(", {} parts ({} wheels)", entry.parts.len(), entry.wheels)
+        } else {
+            String::new()
+        };
         println!(
-            "{}: {} triangles, {} geometries ({} untextured), lod {}, bounds {}",
+            "{}: {} triangles, {} geometries ({} untextured), lod {}, bounds {}{}",
             label,
             report.triangles,
             report.geometries,
             report.untextured_geometries,
             report.lod.map(|lod| lod.as_str()).unwrap_or("none"),
             if report.bounds_computed { "computed" } else { "from file" },
+            parts,
         );
 
         if !report.missing_textures.is_empty() {
@@ -422,6 +486,83 @@ mod tests {
             "dict_part_a_front.webp"
         );
         assert_eq!(image_file_name("prop_x", None, Some("grid"), "png"), "prop_x_grid.png");
+    }
+
+    fn stub_drawable(name: &str, models: usize) -> rpf_archive::Drawable {
+        use rpf_archive::{Drawable, DrawableBounds, DrawableLod, DrawableModel, Vec3};
+        Drawable {
+            name: name.to_string(),
+            name_hash: rpf_archive::rage_joaat(name),
+            bounds: DrawableBounds { center: Vec3::ZERO, sphere_radius: 0.0, box_min: Vec3::ZERO, box_max: Vec3::ZERO },
+            lod_distances: [0.0; 4],
+            render_masks: [0; 4],
+            shader_group: None,
+            lods: vec![DrawableLod {
+                level: LodLevel::High,
+                models: (0..models)
+                    .map(|_| DrawableModel { skeleton_binding: 0, render_mask_flags: 0, shader_mapping: Vec::new(), geometries: Vec::new() })
+                    .collect(),
+            }],
+        }
+    }
+
+    /// A fragment renders as one entry made of its body and physics children
+    /// (empty wheel slots filled in), followed by its extra drawables as
+    /// entries of their own.
+    #[test]
+    fn fragment_becomes_one_composite_entry_plus_its_extras() {
+        use rpf_archive::{Fragment, FragmentChild, Mat4, Vec3};
+
+        let child = |bone_tag: u16, drawable: Option<rpf_archive::Drawable>| FragmentChild {
+            group_index: 0,
+            bone_tag,
+            drawable,
+            transform: Mat4::identity(),
+        };
+        let fragment = Fragment {
+            name: "adder.#ft".to_string(),
+            bound_center: Vec3::ZERO,
+            bound_radius: 1.0,
+            drawable: Some(stub_drawable("adder", 1)),
+            extra_drawables: vec![DrawableEntry {
+                hash: rpf_archive::rage_joaat("adder_hi"),
+                name: "adder_hi".to_string(),
+                drawable: stub_drawable("adder_hi", 1),
+            }],
+            bone_transforms: Vec::new(),
+            children: vec![
+                child(27922, Some(stub_drawable("wheel_lf", 1))),
+                child(26418, None),
+                child(4321, Some(stub_drawable("door_dside_f", 1))),
+                child(8765, None),
+            ],
+        };
+
+        let loaded = Loaded::Fragment(fragment);
+        let renderables = renderables(&loaded);
+
+        assert_eq!(renderables.len(), 2);
+        assert_eq!(renderables[0].label, "adder");
+        assert_eq!(renderables[0].hash, rpf_archive::rage_joaat("adder"));
+        assert_eq!(renderables[0].parts.len(), 4, "body, two wheels and a door");
+        assert_eq!(renderables[0].wheels, 2);
+        assert_eq!(renderables[1].label, "adder_hi");
+        assert_eq!(renderables[1].parts.len(), 1);
+        assert_eq!(renderables[1].wheels, 0);
+    }
+
+    #[test]
+    fn plain_entries_become_single_part_renderables() {
+        let loaded = Loaded::Entries(vec![DrawableEntry {
+            hash: 0x1234_5678,
+            name: "prop_x.#dr".to_string(),
+            drawable: stub_drawable("prop_x", 1),
+        }]);
+        let renderables = renderables(&loaded);
+        assert_eq!(renderables.len(), 1);
+        assert_eq!(renderables[0].label, "prop_x");
+        assert_eq!(renderables[0].hash, 0x1234_5678);
+        assert_eq!(renderables[0].parts.len(), 1);
     }
 
     #[test]

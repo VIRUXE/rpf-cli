@@ -682,9 +682,9 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rpf-archive"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9574490e006be179e01ecfee7da02ea161c3bed57118503a47b83073872a5003"
+checksum = "d9749ed8b3a5a749ba236035374324b15f180a2da8b69ac6e5a48ba165f37cf6"
 dependencies = [
  "aes",
  "anyhow",
@@ -703,7 +703,7 @@ dependencies = [
 
 [[package]]
 name = "rpf-cli"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "clap",

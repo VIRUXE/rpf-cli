@@ -230,4 +230,26 @@ fn textures_and_screenshot_produce_readable_images() {
 
     let json = stdout_of(&rpf(&["resource", "info", loose.to_str().unwrap(), "--json"]));
     assert!(json.trim().starts_with('{') && json.contains("\"kind\":\"drawables\""), "bad json:\n{json}");
+
+    // 6. A vehicle fragment renders with its wheels. The Festive Surprise
+    //    pack is the smallest DLC with cars; its vehicle archive is nested
+    //    one level down inside dlc.rpf.
+    let dlc = format!("{gtav}/update/x64/dlcpacks/mpchristmas2/dlc.rpf");
+    if !Path::new(&dlc).is_file() {
+        println!("{dlc} not installed; skipping the fragment render");
+        return;
+    }
+    let dlc_dir = tmp.path().join("dlc");
+    rpf(&["extract", &dlc, "*xmas2vehicles.rpf", "-o", dlc_dir.to_str().unwrap()]);
+    let vehicles = find_file(&dlc_dir, "xmas2vehicles.rpf").expect("xmas2vehicles.rpf was not extracted");
+
+    let car_dir = tmp.path().join("car");
+    let summary = stdout_of(&rpf(&[
+        "screenshot", vehicles.to_str().unwrap(), "jester2.yft",
+        "-o", car_dir.to_str().unwrap(), "--views", "iso", "--size", "256x256",
+    ]));
+    assert!(summary.contains("5 parts (4 wheels)"), "wheels not drawn:\n{summary}");
+    let car = decode(&car_dir.join("jester2.png"));
+    let drawn = car.pixels().filter(|pixel| pixel.0 != [230, 230, 230, 255]).count();
+    assert!(drawn > 0, "the vehicle render is entirely background");
 }

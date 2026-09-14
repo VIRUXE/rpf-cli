@@ -5,7 +5,8 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-use rpf_archive::{parse_drawables, parse_ytd, DrawableEntry, DrawableKind, RpfEntryKind, YtdTexture};
+use rpf_archive::{parse_drawables, parse_yft, parse_ytd, Drawable, DrawableEntry, DrawableKind, Fragment,
+                  RpfEntryKind, YtdTexture};
 
 use crate::rpf::{Archive, GtaKeys};
 
@@ -54,6 +55,46 @@ pub fn load_drawables(archive: &Archive, name: &str, keys: Option<&GtaKeys>) -> 
     parse_drawables(&data, kind).with_context(|| format!("failed to parse drawable '{}'", name))
 }
 
+/// What a drawable resource loaded for rendering turned out to hold.
+pub enum Loaded {
+    /// A .ydr or .ydd: independent drawables.
+    Entries(Vec<DrawableEntry>),
+    /// A .yft, kept whole so its physics children can be placed on the body.
+    Fragment(Fragment),
+}
+
+impl Loaded {
+    /// Every drawable in the resource, whatever its role.
+    pub fn drawables(&self) -> Vec<&Drawable> {
+        match self {
+            Loaded::Entries(entries) => entries.iter().map(|entry| &entry.drawable).collect(),
+            Loaded::Fragment(fragment) => fragment
+                .drawable
+                .iter()
+                .chain(fragment.children.iter().filter_map(|child| child.drawable.as_ref()))
+                .chain(fragment.extra_drawables.iter().map(|entry| &entry.drawable))
+                .collect(),
+        }
+    }
+}
+
+/// Loads `name` (a .ydr, .ydd or .yft) from `archive` for rendering: a
+/// fragment comes back whole, anything else as its drawable entries.
+pub fn load_renderables(archive: &Archive, name: &str, keys: Option<&GtaKeys>) -> Result<Loaded> {
+    let ext = Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or("");
+    let kind = DrawableKind::from_extension(ext)
+        .with_context(|| format!("'{}' is not a drawable (.ydr/.ydd/.yft)", name))?;
+
+    let data = load_resource(archive, name, keys)?;
+    if kind == DrawableKind::Yft {
+        let fragment = parse_yft(&data).with_context(|| format!("failed to parse fragment '{}'", name))?;
+        return Ok(Loaded::Fragment(fragment));
+    }
+    let entries =
+        parse_drawables(&data, kind).with_context(|| format!("failed to parse drawable '{}'", name))?;
+    Ok(Loaded::Entries(entries))
+}
+
 /// Normalises a `--file`-style spec into the lookup name used against an
 /// archive: appends ".ytd" when the spec carries no extension of its own.
 pub fn ytd_lookup_name(spec: &str) -> String {
@@ -81,11 +122,16 @@ pub fn load_texture_dictionary(archive: &Archive, spec: &str, keys: Option<&GtaK
 /// Collects every texture referenced by the drawables' shader groups,
 /// deduplicated by lowercase name (first occurrence wins), in encounter order.
 pub fn embedded_textures(entries: &[DrawableEntry]) -> Vec<&YtdTexture> {
+    embedded_textures_of(entries.iter().map(|entry| &entry.drawable))
+}
+
+/// [`embedded_textures`] over any set of drawables.
+pub fn embedded_textures_of<'a>(drawables: impl IntoIterator<Item = &'a Drawable>) -> Vec<&'a YtdTexture> {
     let mut seen = std::collections::HashSet::new();
     let mut textures = Vec::new();
 
-    for entry in entries {
-        let Some(shader_group) = &entry.drawable.shader_group else { continue };
+    for drawable in drawables {
+        let Some(shader_group) = &drawable.shader_group else { continue };
         for tex in &shader_group.textures {
             if seen.insert(tex.name.to_lowercase()) {
                 textures.push(tex);
