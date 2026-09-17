@@ -324,7 +324,10 @@ fn build_texture_set(
     // no-index fallback above, searched game-wide instead of one archive.
     let stem_hash = rpf_archive::rage_joaat(&file_stem(&args.file).to_lowercase());
     for txd_hash in index.resolution_order(stem_hash) {
-        let Some(loc) = index.ytd_by_name.get(&txd_hash) else { continue };
+        let Some(loc) = index.ytd_by_name.get(&txd_hash) else {
+            log::debug!("no .ytd for txd hash {txd_hash:08X} in the resolution order");
+            continue;
+        };
         match index.load_bytes(loc, keys).and_then(|data| rpf_archive::parse_ytd(&data).map_err(Into::into)) {
             Ok(textures) => {
                 println!("Using texture dictionary {} ({} texture(s), via index)", loc.inner_path, textures.len());
@@ -372,8 +375,7 @@ fn load_or_build_index(exe: Option<&std::path::Path>, keys: Option<&GtaKeys>) ->
         Ok(index) => index,
         Err(err) => { eprintln!("warning: failed to build texture index: {err}"); return None; }
     };
-    let (ytds, archetypes, resident) = index.len();
-    println!("Texture index: {ytds} dictionaries, {archetypes} archetypes, {resident} resident textures");
+    println!("Texture index: {}", index.summary());
 
     if let Some(path) = &cache_path
         && let Err(err) = index.save_cached(path)

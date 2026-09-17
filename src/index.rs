@@ -2,27 +2,19 @@
 // external texture dictionary the way the game itself does, instead of the
 // single same-stem guess in `resources::load_texture_dictionary`.
 //
-// This follows CodeWalker's `Renderer.TryGetRenderable` resolution order
-// (see the plan this was built from): an archetype's `.ytyp` names a texture
-// dictionary by hash, that hash is resolved to a `.ytd` by a game-wide
-// name index, and a texture still missing after that falls back to the two
-// "resident" dictionaries the game always keeps loaded (`mapdetail.ytd`,
-// `vehshare.ytd`).
-//
-// Deliberately not implemented: the `gtxd.meta`/`vehicles.meta`
-// parent-texture-dictionary chain CodeWalker also walks. Every prop in the
-// diagnosed failure set resolved directly through its own archetype's txd
-// with no parent hop needed (verified against the game files), and that
-// chain exists mainly for ped/vehicle variation dictionaries, not static
-// props. `parent_txds` is left in the on-disk format as an empty map so it
-// can be filled in later without another format bump.
+// This follows CodeWalker's `Renderer.TryGetRenderable` resolution order: an
+// archetype's `.ytyp` names a texture dictionary by hash, that hash (and its
+// parent-dictionary chain, from `gtxd.meta`/`gtxd.ymt`/`mph4_gtxd.ymt`/
+// `vehicles.meta`) is resolved to `.ytd`s by a game-wide name index, and a
+// texture still missing after all of that falls back to the two "resident"
+// dictionaries the game always keeps loaded (`mapdetail.ytd`, `vehshare.ytd`).
 
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use rpf_archive::{parse_archetype_txds, parse_ytd, rage_joaat};
+use rpf_archive::{parse_archetype_txds, parse_txd_relationships, parse_ytd, rage_joaat};
 
 use crate::commands::search::collect_archives;
 use crate::keys;
@@ -50,12 +42,19 @@ pub struct GameIndex {
     /// Texture name hash -> the name hash of the resident dictionary
     /// (`mapdetail`/`vehshare`) that holds it.
     pub resident_textures: HashMap<u32, u32>,
-    /// Reserved for a future `gtxd.meta`/`vehicles.meta` parent-dictionary
-    /// chain (child txd hash -> parent txd hash). Always empty today.
+    /// Child texture-dictionary hash -> parent texture-dictionary hash, from
+    /// every `gtxd.meta`/`gtxd.ymt`/`mph4_gtxd.ymt`/`vehicles.meta`. First
+    /// relationship for a given child wins, matching CodeWalker's own
+    /// first-wins merge (see `merge_txd_relationships`).
     pub parent_txds: HashMap<u32, u32>,
 }
 
 const RESIDENT_DICTS: [&str; 2] = ["mapdetail", "vehshare"];
+
+/// CodeWalker's `GameFileCache.InitGtxds` matches these names exactly
+/// (`entry.NameLower == "..."`), not as a suffix — a filename like
+/// `dlc_gtxd.ymt` is deliberately not picked up, matching the reference.
+const TXD_RELATIONSHIP_FILES: [&str; 4] = ["gtxd.ymt", "gtxd.meta", "mph4_gtxd.ymt", "vehicles.meta"];
 
 impl GameIndex {
     /// Builds the index by walking every `.rpf` under `game_root`,
@@ -160,16 +159,9 @@ impl GameIndex {
     }
 
     /// Looks up which resident dictionary (`mapdetail`/`vehshare`) carries a
-    /// texture named `texture_name_hash`, if either does.
-    ///
-    /// Not wired into `screenshot` yet: that fallback only applies to a
-    /// texture name still missing *after* the dictionary chain, which is
-    /// only known once rendering has already reported it missing, one
-    /// level up from where the rest of this resolution happens. None of
-    /// the props this index was built to fix need it (verified against the
-    /// game files) — a future caller that wants it can re-run
-    /// `render_parts` with an extra layer built from this lookup.
-    #[allow(dead_code)]
+    /// texture named `texture_name_hash`, if either does. Used by
+    /// `screenshot`'s resident-dictionary fallback once rendering has
+    /// reported a texture name still missing after the whole chain.
     pub fn resident_dict_for_texture(&self, texture_name_hash: u32) -> Option<u32> {
         self.resident_textures.get(&texture_name_hash).copied()
     }
@@ -200,9 +192,34 @@ impl GameIndex {
         Ok(())
     }
 
-    pub fn len(&self) -> (usize, usize, usize) {
-        (self.ytd_by_name.len(), self.archetype_txd.len(), self.resident_textures.len())
+    pub fn stats(&self) -> IndexStats {
+        IndexStats {
+            ytds: self.ytd_by_name.len(),
+            archetypes: self.archetype_txd.len(),
+            resident_textures: self.resident_textures.len(),
+            parent_txds: self.parent_txds.len(),
+        }
     }
+
+    /// The one-line human summary shared by `rpf index build`/`info` and
+    /// the on-demand build in `screenshot`.
+    pub fn summary(&self) -> String {
+        let s = self.stats();
+        format!(
+            "{} dictionaries, {} archetypes, {} resident textures, {} txd parent links",
+            s.ytds, s.archetypes, s.resident_textures, s.parent_txds
+        )
+    }
+}
+
+/// Sizes of each map in a [`GameIndex`], for `rpf index build`/`info` and
+/// the on-demand build notice in `screenshot`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IndexStats {
+    pub ytds: usize,
+    pub archetypes: usize,
+    pub resident_textures: usize,
+    pub parent_txds: usize,
 }
 
 fn index_archive(archive: &Archive, archive_path: &Path, nested_rpfs: &[String], keys: Option<&GtaKeys>, out: &mut GameIndex) {
@@ -215,6 +232,17 @@ fn index_archive(archive: &Archive, archive_path: &Path, nested_rpfs: &[String],
             let mut chain = nested_rpfs.to_vec();
             chain.push(file.path.clone());
             index_archive(&nested, archive_path, &chain, keys, out);
+            continue;
+        }
+
+        if TXD_RELATIONSHIP_FILES.contains(&name_lower.as_str()) {
+            match archive.extract(file, keys) {
+                Ok(data) => match parse_txd_relationships(&data) {
+                    Ok(rels) => merge_txd_relationships(&mut out.parent_txds, &rels),
+                    Err(err) => log::debug!("index: failed to parse '{}': {err}", file.path),
+                },
+                Err(err) => log::debug!("index: failed to extract '{}': {err}", file.path),
+            }
             continue;
         }
 
@@ -233,7 +261,15 @@ fn index_archive(archive: &Archive, archive_path: &Path, nested_rpfs: &[String],
             {
                 let owner_hash = rage_joaat(&stem);
                 for tex in textures {
-                    out.resident_textures.insert(tex.name_hash, owner_hash);
+                    // The stored hash block falls back to 0 when absent, so
+                    // this is indexed under both that hash and the hashed
+                    // lowercase name to make the lookup unmissable — the
+                    // caller (a still-missing texture name, post-render)
+                    // only ever has the name.
+                    if tex.name_hash != 0 {
+                        out.resident_textures.insert(tex.name_hash, owner_hash);
+                    }
+                    out.resident_textures.insert(rage_joaat(&tex.name.to_lowercase()), owner_hash);
                 }
             }
         } else if name_lower.ends_with(".ytyp")
@@ -249,10 +285,34 @@ fn index_archive(archive: &Archive, archive_path: &Path, nested_rpfs: &[String],
     }
 }
 
+/// Merges `rels` into `out`, first child-wins — matching CodeWalker's
+/// `addTxdRelationships` (`GameFileCache.cs`: `if (!parentTxds.ContainsKey(chash))`)
+/// and each individual file's own parse. Combined with base-before-DLC scan
+/// order this would mean the base game's relationship beats a DLC's; today's
+/// archive scan order is alphabetical rather than base/update/DLC-ranked
+/// (tracked separately), so this only guarantees a stable pick, not
+/// necessarily the game's own.
+fn merge_txd_relationships(out: &mut HashMap<u32, u32>, rels: &[rpf_archive::TxdRelationship]) {
+    for rel in rels {
+        let child = rage_joaat(&rel.child.to_lowercase());
+        let parent = rage_joaat(&rel.parent.to_lowercase());
+        if child == 0 || parent == 0 || child == parent {
+            continue;
+        }
+        out.entry(child).or_insert(parent);
+    }
+}
+
 // ─── Minimal binary (de)serialization — no serde dependency for one struct ──
 
 const MAGIC: u32 = 0x5850_4652; // "RPFX" little-endian
-const FORMAT_VERSION: u32 = 1;
+// Bumped from 1: the on-disk layout is unchanged (the parent_txds section
+// already existed and was already last), but the cache path is keyed only
+// on the GTA5 executable's size+mtime, not on any tool version — so without
+// a bump, every existing cache (written with an always-empty parent_txds)
+// would be served straight to the new resolver and the parent chain would
+// be silently inert until someone ran `rpf index clear`.
+const FORMAT_VERSION: u32 = 2;
 
 fn write_u32(buf: &mut Vec<u8>, v: u32) {
     buf.extend_from_slice(&v.to_le_bytes());
@@ -383,6 +443,7 @@ mod tests {
         });
         index.archetype_txd.insert(2, 3);
         index.resident_textures.insert(4, 5);
+        index.parent_txds.insert(6, 7);
 
         let bytes = encode(&index);
         let decoded = decode(&bytes).expect("should decode");
@@ -390,13 +451,47 @@ mod tests {
         assert_eq!(decoded.ytd_by_name.get(&1), index.ytd_by_name.get(&1));
         assert_eq!(decoded.archetype_txd, index.archetype_txd);
         assert_eq!(decoded.resident_textures, index.resident_textures);
-        assert!(decoded.parent_txds.is_empty());
+        assert_eq!(decoded.parent_txds, index.parent_txds);
     }
 
     #[test]
     fn rejects_bad_magic() {
         let bytes = vec![0u8; 8];
         assert!(decode(&bytes).is_err());
+    }
+
+    #[test]
+    fn rejects_old_format_version() {
+        let mut bytes = Vec::new();
+        write_u32(&mut bytes, MAGIC);
+        write_u32(&mut bytes, 1); // the pre-parent-chain format
+        assert!(decode(&bytes).is_err());
+    }
+
+    #[test]
+    fn merge_txd_relationships_is_first_wins() {
+        let mut out = HashMap::new();
+        merge_txd_relationships(&mut out, &[rel("a", "b")]);
+        merge_txd_relationships(&mut out, &[rel("a", "c")]);
+        assert_eq!(out.get(&rage_joaat("a")), Some(&rage_joaat("b")));
+    }
+
+    #[test]
+    fn merge_txd_relationships_lowercases_before_hashing() {
+        let mut out = HashMap::new();
+        merge_txd_relationships(&mut out, &[rel("PROP_Foo", "VehShare")]);
+        assert_eq!(out.get(&rage_joaat("prop_foo")), Some(&rage_joaat("vehshare")));
+    }
+
+    #[test]
+    fn merge_txd_relationships_rejects_self_parent() {
+        let mut out = HashMap::new();
+        merge_txd_relationships(&mut out, &[rel("same", "same")]);
+        assert!(out.is_empty());
+    }
+
+    fn rel(child: &str, parent: &str) -> rpf_archive::TxdRelationship {
+        rpf_archive::TxdRelationship { child: child.to_string(), parent: parent.to_string() }
     }
 
     #[test]
