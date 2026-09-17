@@ -35,8 +35,7 @@ pub fn run(args: &IndexArgs, keys: Option<&GtaKeys>, exe: Option<&std::path::Pat
         IndexCommand::Build => {
             println!("Building texture index for {}...", game_root.display());
             let index = GameIndex::build(&game_root, keys)?;
-            let (ytds, archetypes, resident) = index.len();
-            println!("{ytds} dictionaries, {archetypes} archetypes, {resident} resident textures");
+            println!("{}", index.summary());
 
             let path = cache_path.context("no cache directory available (no HOME/USERPROFILE?)")?;
             index.save_cached(&path)?;
@@ -54,10 +53,15 @@ pub fn run(args: &IndexArgs, keys: Option<&GtaKeys>, exe: Option<&std::path::Pat
                 return Ok(());
             }
             let size = std::fs::metadata(&path)?.len();
-            let index = GameIndex::load_cached(&path)?;
-            let (ytds, archetypes, resident) = index.len();
+            let index = match GameIndex::load_cached(&path) {
+                Ok(index) => index,
+                Err(_) => {
+                    println!("Cache is from an older format — run `rpf index build`.");
+                    return Ok(());
+                }
+            };
             println!("Size: {size} bytes");
-            println!("{ytds} dictionaries, {archetypes} archetypes, {resident} resident textures");
+            println!("{}", index.summary());
             Ok(())
         }
         IndexCommand::Clear => {

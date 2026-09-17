@@ -1,6 +1,6 @@
 [package]
 name = "rpf-cli"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2024"
 authors = ["VIRUXE"]
 description = "Command-line tool for working with Rockstar Package Files (RPF)"
@@ -19,7 +19,7 @@ thiserror = "1.0"
 log = "0.4"
 env_logger = "0.11"
 clap = { version = "4.5", features = ["derive", "env"] }
-rpf-archive = { git = "https://github.com/VIRUXE/rpf-archive-rs.git", rev = "f561036671eaafe6d37ef981c55e741a571ce77c" }
+rpf-archive = { git = "https://github.com/VIRUXE/rpf-archive-rs.git", rev = "b91cbd5434df869d877275249740f23635c837b5" }
 ureq = "3.4"
 json = "0.12"
 sha2 = "0.10"
