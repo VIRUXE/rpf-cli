@@ -340,6 +340,57 @@ fn build_texture_set(
     set
 }
 
+/// Appends the resident dictionaries (`mapdetail`/`vehshare`) that actually
+/// hold one of `missing` as new lowest-priority layers on `set`, skipping any
+/// already in `already_loaded`. Returns true when a layer was added, i.e.
+/// when re-rendering could change the result.
+///
+/// CodeWalker's `Renderer.cs TryGetRenderable` consults its by-texture-name
+/// resident index only after the whole txd chain; that index is populated
+/// only from `mapdetail`/`vehshare` (`GameFileCache.InitGtxds`) rather than
+/// from every streamed ytd. Loading both dictionaries unconditionally on
+/// every render would be needlessly expensive — `mapdetail.ytd` is large and
+/// `TextureSet::push_layer` fully decodes every texture to RGBA — so this is
+/// only called once rendering has already reported a name still missing.
+fn push_resident_fallback(
+    set: &mut TextureSet,
+    missing: &[String],
+    index: &GameIndex,
+    keys: Option<&GtaKeys>,
+    already_loaded: &mut Vec<u32>,
+) -> bool {
+    let mut wanted: Vec<u32> = Vec::new();
+    for name in missing {
+        let Some(dict) = index.resident_dict_for_texture(rpf_archive::rage_joaat(&name.to_lowercase())) else {
+            continue;
+        };
+        if !already_loaded.contains(&dict) && !wanted.contains(&dict) {
+            wanted.push(dict);
+        }
+    }
+    if wanted.is_empty() {
+        return false;
+    }
+
+    let mut added = false;
+    for dict in wanted {
+        already_loaded.push(dict);
+        let Some(loc) = index.ytd_by_name.get(&dict) else {
+            log::debug!("resident dictionary {dict:08X} has no .ytd in the index");
+            continue;
+        };
+        match index.load_bytes(loc, keys).and_then(|d| rpf_archive::parse_ytd(&d).map_err(Into::into)) {
+            Ok(textures) => {
+                println!("Using resident texture dictionary {} ({} texture(s), via index)", loc.inner_path, textures.len());
+                report_failed(&set.push_layer(&textures), &loc.inner_path);
+                added = true;
+            }
+            Err(err) => eprintln!("warning: failed to load resident dictionary '{}': {}", loc.inner_path, err),
+        }
+    }
+    added
+}
+
 fn report_failed(failed: &[String], source: &str) {
     if !failed.is_empty() {
         eprintln!("warning: {} texture(s) in {} failed to decode: {}",
@@ -405,7 +456,8 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>, exe: Option<&std::path
     }
 
     let index = if args.no_index { None } else { load_or_build_index(exe, keys) };
-    let textures = build_texture_set(&archive, args, &loaded, keys, index.as_ref());
+    let mut textures = build_texture_set(&archive, args, &loaded, keys, index.as_ref());
+    let mut resident_loaded: Vec<u32> = Vec::new();
 
     let stem = file_stem(&args.file);
     let out_dir = args.output.clone().unwrap_or_else(|| PathBuf::from("."));
@@ -434,13 +486,30 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>, exe: Option<&std::path
 
     for entry in &entries {
         let label = &entry.label;
-        let rendered = render_parts(&entry.parts, &textures, &options, &views)
+        let mut rendered = render_parts(&entry.parts, &textures, &options, &views)
             .with_context(|| format!("failed to render '{}'", label))?;
 
-        let report = rendered
+        let mut report = rendered
             .first()
             .map(|(_, _, report)| report.clone())
             .unwrap_or_default();
+
+        // A texture still missing after the whole index-driven chain gets
+        // one more chance: the resident dictionaries (mapdetail/vehshare),
+        // by texture name rather than dictionary hash. Only re-render when
+        // something was actually missing and a layer was genuinely added —
+        // the overwhelmingly common case is nothing missing at all.
+        if !report.missing_textures.is_empty()
+            && let Some(index) = index.as_ref()
+            && push_resident_fallback(&mut textures, &report.missing_textures, index, keys, &mut resident_loaded)
+        {
+            rendered = render_parts(&entry.parts, &textures, &options, &views)
+                .with_context(|| format!("failed to re-render '{}'", label))?;
+            report = rendered
+                .first()
+                .map(|(_, _, report)| report.clone())
+                .unwrap_or_default();
+        }
 
         let parts = if entry.parts.len() > 1 {
             format!(", {} parts ({} wheels)", entry.parts.len(), entry.wheels)
