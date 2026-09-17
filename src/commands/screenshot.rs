@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use rpf_archive::{compose_sheet, encode_image, render_parts, wheel_slot, DrawableEntry, ImageFormat,
                   LodLevel, RenderOptions, RenderPart, SheetItem, SheetOptions, TextureSet, View};
 
+use crate::index::GameIndex;
 use crate::resources::{embedded_textures_of, file_stem, load_renderables, load_texture_dictionary, sanitize,
                        Loaded};
 use crate::rpf::{Archive, GtaKeys};
@@ -71,6 +72,11 @@ pub struct ScreenshotArgs {
     /// Body colour (#rrggbb) for vehicle paint shaders, which otherwise render white
     #[arg(long, value_name = "#RRGGBB", value_parser = parse_paint)]
     pub paint: Option<[u8; 3]>,
+
+    /// Skip the game-wide texture index: only --ytd and the same-stem guess
+    /// are tried for textures the embedded dictionary doesn't have
+    #[arg(long)]
+    pub no_index: bool,
 }
 
 /// Parses a `#rrggbb` paint colour.
@@ -273,19 +279,35 @@ fn renderables(loaded: &Loaded) -> Vec<Renderable<'_>> {
     }
 }
 
-/// Builds the texture set: embedded textures first, then one layer per `--ytd`.
+/// Builds the texture set: embedded textures first, then one layer per
+/// `--ytd`, then whatever the game-wide index resolves (or, with no index
+/// available, the same-stem guess this always made).
 fn build_texture_set(
     archive: &Archive,
     args: &ScreenshotArgs,
     loaded: &Loaded,
     keys: Option<&GtaKeys>,
+    index: Option<&GameIndex>,
 ) -> TextureSet {
     let mut set = TextureSet::new();
 
     let embedded: Vec<_> = embedded_textures_of(loaded.drawables()).into_iter().cloned().collect();
     report_failed(&set.push_layer(&embedded), "embedded");
 
-    if args.ytd.is_empty() {
+    for spec in &args.ytd {
+        match load_texture_dictionary(archive, spec, keys) {
+            Ok(textures) => {
+                println!("Using texture dictionary {} ({} texture(s))", spec, textures.len());
+                report_failed(&set.push_layer(&textures), spec);
+            }
+            Err(err) => eprintln!("warning: failed to load texture dictionary '{spec}': {err}"),
+        }
+    }
+
+    let Some(index) = index else {
+        // No index available (--no-index, or no --exe/--keys to build one
+        // from): fall back to the one guess rpf-cli has always made — a
+        // same-name .ytd in this same archive.
         let fallback = format!("{}.ytd", file_stem(&args.file));
         match load_texture_dictionary(archive, &fallback, keys) {
             Ok(textures) => {
@@ -295,15 +317,20 @@ fn build_texture_set(
             Err(err) => println!("No texture dictionary {} found: {}", fallback, err),
         }
         return set;
-    }
+    };
 
-    for spec in &args.ytd {
-        match load_texture_dictionary(archive, spec, keys) {
+    // The index-driven order (archetype's own texture dictionary, then the
+    // same-stem guess, then any parent chain) is a strict superset of the
+    // no-index fallback above, searched game-wide instead of one archive.
+    let stem_hash = rpf_archive::rage_joaat(&file_stem(&args.file).to_lowercase());
+    for txd_hash in index.resolution_order(stem_hash) {
+        let Some(loc) = index.ytd_by_name.get(&txd_hash) else { continue };
+        match index.load_bytes(loc, keys).and_then(|data| rpf_archive::parse_ytd(&data).map_err(Into::into)) {
             Ok(textures) => {
-                println!("Using texture dictionary {} ({} texture(s))", spec, textures.len());
-                report_failed(&set.push_layer(&textures), spec);
+                println!("Using texture dictionary {} ({} texture(s), via index)", loc.inner_path, textures.len());
+                report_failed(&set.push_layer(&textures), &loc.inner_path);
             }
-            Err(err) => eprintln!("warning: failed to load texture dictionary '{spec}': {err}"),
+            Err(err) => eprintln!("warning: failed to load '{}' from index: {}", loc.inner_path, err),
         }
     }
 
@@ -317,7 +344,47 @@ fn report_failed(failed: &[String], source: &str) {
     }
 }
 
-pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
+/// Loads the cached game-wide texture index, building and caching it if
+/// there's none yet. `None` (with a warning, not an error — the same-stem
+/// guess still applies) when there's no `--exe`/`GTAV_PATH` to find the game
+/// directory from, or the build itself fails.
+fn load_or_build_index(exe: Option<&std::path::Path>, keys: Option<&GtaKeys>) -> Option<GameIndex> {
+    let exe = exe?;
+    let exe_path = match crate::keys::resolve_exe(exe) {
+        Ok(p) => p,
+        Err(err) => { eprintln!("warning: couldn't resolve --exe for the texture index: {err}"); return None; }
+    };
+    let game_root = exe_path.parent()?.to_path_buf();
+
+    let cache_path = GameIndex::cache_path(&exe_path);
+
+    if let Some(path) = &cache_path
+        && path.is_file()
+    {
+        match GameIndex::load_cached(path) {
+            Ok(index) => return Some(index),
+            Err(err) => eprintln!("texture index cache at {} is invalid ({err}); rebuilding", path.display()),
+        }
+    }
+
+    println!("Building texture index for {} (one-off; cached for next time)...", game_root.display());
+    let index = match GameIndex::build(&game_root, keys) {
+        Ok(index) => index,
+        Err(err) => { eprintln!("warning: failed to build texture index: {err}"); return None; }
+    };
+    let (ytds, archetypes, resident) = index.len();
+    println!("Texture index: {ytds} dictionaries, {archetypes} archetypes, {resident} resident textures");
+
+    if let Some(path) = &cache_path
+        && let Err(err) = index.save_cached(path)
+    {
+        eprintln!("warning: failed to cache texture index: {err}");
+    }
+
+    Some(index)
+}
+
+pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>, exe: Option<&std::path::Path>) -> Result<()> {
     let archive = Archive::open(&args.archive, keys)?;
     archive.require_keys(keys)?;
 
@@ -335,7 +402,8 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>) -> Result<()> {
         anyhow::bail!("'{}' holds no drawables", args.file);
     }
 
-    let textures = build_texture_set(&archive, args, &loaded, keys);
+    let index = if args.no_index { None } else { load_or_build_index(exe, keys) };
+    let textures = build_texture_set(&archive, args, &loaded, keys, index.as_ref());
 
     let stem = file_stem(&args.file);
     let out_dir = args.output.clone().unwrap_or_else(|| PathBuf::from("."));

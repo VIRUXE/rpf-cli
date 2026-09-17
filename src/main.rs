@@ -4,13 +4,14 @@ use std::path::{Path, PathBuf};
 
 mod rpf;
 mod commands;
+mod index;
 mod keys;
 mod paths;
 mod resources;
 mod update;
 mod utils;
 
-use commands::{info, list, extract, verify, tree, textures, screenshot, create, search, resource};
+use commands::{info, list, extract, verify, tree, textures, screenshot, create, search, resource, index_cmd};
 use commands::update as update_cmd;
 use rpf::GtaKeys;
 
@@ -131,6 +132,10 @@ enum Commands {
         encryption: String,
     },
 
+    /// Build, inspect, or clear the cached game-wide texture index that
+    /// `screenshot` uses to resolve external texture dictionaries
+    Index(index_cmd::IndexArgs),
+
     /// Write the keys out to disk for reuse with --keys
     ExtractKeys {
         /// Directory to save extracted keys into
@@ -184,9 +189,10 @@ fn dispatch(command: Commands, keys: Option<&GtaKeys>, exe: Option<&Path>) -> Re
         Commands::Verify      { archive }                    => verify::run(&archive, keys),
         Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys),
         Commands::Textures(args)                             => textures::run(&args, keys),
-        Commands::Screenshot(args)                           => screenshot::run(&args, keys),
+        Commands::Screenshot(args)                           => screenshot::run(&args, keys, exe),
         Commands::Resource(args)                             => resource::run(&args, keys),
         Commands::Update(args)                               => update_cmd::run(&args),
+        Commands::Index(args)                                => index_cmd::run(&args, keys, exe),
         Commands::Create { input, output, version, encryption } => {
             create::run(&input, &output, version, &encryption, keys)
         }
