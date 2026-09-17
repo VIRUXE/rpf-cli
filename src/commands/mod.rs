@@ -9,3 +9,4 @@ pub mod create;
 pub mod search;
 pub mod resource;
 pub mod update;
+pub mod index_cmd;

@@ -166,7 +166,10 @@ pub fn run(args: &SearchArgs, keys: Option<&GtaKeys>) -> Result<()> {
     Ok(())
 }
 
-fn collect_archives(path: &Path) -> Result<Vec<PathBuf>> {
+/// Finds every `.rpf` under `path` (or just `path` itself, if it's a file).
+/// Shared with `index::build`, which walks the same top-level tree to build
+/// the texture-resolution index.
+pub(crate) fn collect_archives(path: &Path) -> Result<Vec<PathBuf>> {
     if path.is_file() { return Ok(vec![path.to_path_buf()]); }
     if !path.is_dir() { bail!("{} does not exist", path.display()); }
 
