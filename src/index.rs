@@ -115,36 +115,45 @@ impl GameIndex {
 
     /// Every `.ytd` layer `screenshot` should try, in CodeWalker's order,
     /// for a drawable named `file_stem` and (if known) its archetype hash:
-    /// the archetype's own texture dictionary, then the resident
-    /// dictionaries as a last resort. Names, not yet loaded — the caller
-    /// loads and parses only the ones it still needs.
+    /// the archetype's own texture dictionary and its full parent chain,
+    /// then the drawable's own stem hash and *its* parent chain as the
+    /// same-name guess this has always made. Names, not yet loaded — the
+    /// caller loads and parses only the ones it still needs.
+    ///
+    /// Each candidate's parent chain is walked in full before the next
+    /// candidate starts (CodeWalker's `Renderer.cs TryGetRenderable` builds
+    /// exactly this array — `[own txd, parent, grandparent, ...]` — for the
+    /// archetype's resolved dictionary). A single shared `seen` set is what
+    /// keeps this a cycle guard rather than a repeat of the same chain:
+    /// CodeWalker has no such guard anywhere in this walk.
     pub fn resolution_order(&self, file_stem_hash: u32) -> Vec<u32> {
-        let mut seen = std::collections::HashSet::new();
-        let mut order = Vec::new();
+        const MAX_HOPS: usize = 64;
 
         // The archetype hash is usually just the drawable's own file stem
         // (CodeWalker's `ModelForm.cs` fallback for a model with no known
         // archetype): try that hash's texture dictionary directly, and also
         // check whether an archetype named it explicitly.
+        let mut starts = Vec::with_capacity(2);
         if let Some(&txd_hash) = self.archetype_txd.get(&file_stem_hash)
-            && seen.insert(txd_hash)
+            && txd_hash != 0
         {
-            order.push(txd_hash);
+            starts.push(txd_hash);
         }
-        if seen.insert(file_stem_hash) {
-            order.push(file_stem_hash);
-        }
+        starts.push(file_stem_hash);
 
-        // Parent chain (currently always empty; see module docs).
-        let mut current = order.last().copied().unwrap_or(file_stem_hash);
-        let mut hops = 0;
-        while let Some(&parent) = self.parent_txds.get(&current) {
-            hops += 1;
-            if hops > 64 || !seen.insert(parent) {
-                break; // cycle guard: CodeWalker has none, this does.
+        let mut seen = std::collections::HashSet::new();
+        let mut order = Vec::new();
+
+        for start in starts {
+            let mut current = start;
+            for _ in 0..=MAX_HOPS {
+                if !seen.insert(current) {
+                    break; // cycle, or already covered by an earlier chain
+                }
+                order.push(current);
+                let Some(&parent) = self.parent_txds.get(&current) else { break };
+                current = parent;
             }
-            order.push(parent);
-            current = parent;
         }
 
         order
@@ -412,5 +421,41 @@ mod tests {
         let order = index.resolution_order(1);
         // 1 (self), 2 (parent), then the cycle back to 1 is rejected.
         assert_eq!(order, vec![1, 2]);
+    }
+
+    #[test]
+    fn resolution_order_walks_the_archetype_txds_chain_not_the_stems() {
+        // Regression test: the chain must be walked from the archetype's
+        // resolved dictionary (200), not from the stem hash (100) that
+        // happens to be pushed last — a prior version seeded the walk from
+        // `order.last()` and so never found this parent at all.
+        let mut index = GameIndex::default();
+        index.archetype_txd.insert(100, 200);
+        index.parent_txds.insert(200, 300);
+
+        let order = index.resolution_order(100);
+        assert_eq!(order, vec![200, 300, 100]);
+    }
+
+    #[test]
+    fn resolution_order_merges_both_chains_without_duplicates() {
+        let mut index = GameIndex::default();
+        index.archetype_txd.insert(100, 200);
+        index.parent_txds.insert(200, 400);
+        index.parent_txds.insert(100, 400); // same parent as the archetype chain
+
+        let order = index.resolution_order(100);
+        assert_eq!(order, vec![200, 400, 100]);
+    }
+
+    #[test]
+    fn resolution_order_stops_at_the_hop_limit() {
+        let mut index = GameIndex::default();
+        for i in 0..200u32 {
+            index.parent_txds.insert(i, i + 1);
+        }
+
+        let order = index.resolution_order(0);
+        assert!(order.len() <= 65, "expected the walk to stop at the hop limit, got {} entries", order.len());
     }
 }
