@@ -100,6 +100,22 @@ fn bad_magic_is_an_error() {
     assert!(stderr.contains("0x58585858"), "stderr should name the magic:\n{stderr}");
 }
 
+/// `--verbose` only adds a per-geometry breakdown for drawables; on anything
+/// else (and in JSON) it must not change the output at all.
+#[test]
+fn verbose_does_not_change_non_drawable_output() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = write(tmp.path(), "thing.ybn", &stored_rsc7());
+
+    let plain = ok(&["resource", "info", &file]);
+    let verbose = ok(&["-v", "resource", "info", &file]);
+    assert_eq!(plain, verbose, "verbose should not affect a non-drawable resource");
+
+    let plain_json = ok(&["resource", "info", &file, "--json"]);
+    let verbose_json = ok(&["-v", "resource", "info", &file, "--json"]);
+    assert_eq!(plain_json, verbose_json, "verbose should not affect JSON for a non-drawable resource");
+}
+
 #[test]
 fn entry_inside_archive() {
     let tmp = tempfile::tempdir().unwrap();

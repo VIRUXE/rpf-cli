@@ -77,6 +77,12 @@ pub struct ScreenshotArgs {
     /// are tried for textures the embedded dictionary doesn't have
     #[arg(long)]
     pub no_index: bool,
+
+    /// Frame the camera on the whole model even when it is really several
+    /// pieces scattered far apart, instead of the piece with the bulk of the
+    /// geometry (the far pieces are always drawn either way)
+    #[arg(long)]
+    pub no_cluster_framing: bool,
 }
 
 /// Parses a `#rrggbb` paint colour.
@@ -201,6 +207,18 @@ fn summary_line(label: &str, report: &rpf_archive::RenderReport, parts: &str) ->
     } else {
         String::new()
     };
+    let bounds = if report.framing_excluded_geometries > 0 {
+        format!(
+            "clustered (1 of {} islands, {} geometr{} excluded)",
+            report.framing_islands,
+            report.framing_excluded_geometries,
+            if report.framing_excluded_geometries == 1 { "y" } else { "ies" },
+        )
+    } else if report.bounds_computed {
+        "computed".to_string()
+    } else {
+        "from file".to_string()
+    };
     format!(
         "{}: {} triangles, {} geometries ({} untextured{}), lod {}, bounds {}{}",
         label,
@@ -209,7 +227,7 @@ fn summary_line(label: &str, report: &rpf_archive::RenderReport, parts: &str) ->
         report.untextured_geometries,
         no_diffuse,
         report.lod.map(|lod| lod.as_str()).unwrap_or("none"),
-        if report.bounds_computed { "computed" } else { "from file" },
+        bounds,
         parts,
     )
 }
@@ -479,6 +497,7 @@ pub fn run(args: &ScreenshotArgs, keys: Option<&GtaKeys>, exe: Option<&std::path
         backface_cull: args.cull,
         vertex_colors: args.vertex_colors,
         paint: args.paint,
+        cluster_framing: !args.no_cluster_framing,
         ..Default::default()
     };
 
@@ -762,6 +781,38 @@ mod tests {
         assert_eq!(
             summary_line("prop", &report, ", 5 parts (4 wheels)"),
             "prop: 10 triangles, 4 geometries (2 untextured, 1 with no diffuse), lod high, bounds from file, 5 parts (4 wheels)"
+        );
+    }
+
+    /// The "clustered" clause only replaces the bounds term when framing
+    /// actually excluded something; a normal report (no exclusion) prints
+    /// the old strings verbatim, keeping past batch runs comparable.
+    #[test]
+    fn summary_line_reports_clustered_framing() {
+        let mut report = rpf_archive::RenderReport::default();
+        report.triangles = 36;
+        report.geometries = 2;
+        report.lod = Some(LodLevel::High);
+        report.framing_islands = 2;
+        report.framing_excluded_geometries = 1;
+
+        assert_eq!(
+            summary_line("hei_bank_heist_card", &report, ""),
+            "hei_bank_heist_card: 36 triangles, 2 geometries (0 untextured), lod high, bounds clustered (1 of 2 islands, 1 geometry excluded)"
+        );
+
+        report.framing_islands = 3;
+        report.framing_excluded_geometries = 2;
+        assert_eq!(
+            summary_line("prop", &report, ""),
+            "prop: 36 triangles, 2 geometries (0 untextured), lod high, bounds clustered (1 of 3 islands, 2 geometries excluded)"
+        );
+
+        // With nothing excluded, the framing_islands count alone changes nothing.
+        report.framing_excluded_geometries = 0;
+        assert_eq!(
+            summary_line("prop", &report, ""),
+            "prop: 36 triangles, 2 geometries (0 untextured), lod high, bounds from file"
         );
     }
 

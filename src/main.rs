@@ -171,7 +171,7 @@ fn main() -> Result<()> {
         load_keys(cli.exe.as_deref(), cli.keys.as_deref())?
     };
 
-    let result = dispatch(cli.command, keys.as_ref(), cli.exe.as_deref());
+    let result = dispatch(cli.command, keys.as_ref(), cli.exe.as_deref(), cli.verbose);
 
     if result.is_ok() {
         update::report_background_check(check);
@@ -180,7 +180,7 @@ fn main() -> Result<()> {
     result
 }
 
-fn dispatch(command: Commands, keys: Option<&GtaKeys>, exe: Option<&Path>) -> Result<()> {
+fn dispatch(command: Commands, keys: Option<&GtaKeys>, exe: Option<&Path>, verbose: bool) -> Result<()> {
     match command {
         Commands::Info        { archive }                    => info::run(&archive, keys),
         Commands::List        { archive, pattern, detailed } => list::run(&archive, pattern.as_deref(), detailed, keys),
@@ -190,7 +190,7 @@ fn dispatch(command: Commands, keys: Option<&GtaKeys>, exe: Option<&Path>) -> Re
         Commands::Tree        { archive, depth }             => tree::run(&archive, depth, keys),
         Commands::Textures(args)                             => textures::run(&args, keys),
         Commands::Screenshot(args)                           => screenshot::run(&args, keys, exe),
-        Commands::Resource(args)                             => resource::run(&args, keys),
+        Commands::Resource(args)                             => resource::run(&args, keys, verbose),
         Commands::Update(args)                               => update_cmd::run(&args),
         Commands::Index(args)                                => index_cmd::run(&args, keys, exe),
         Commands::Create { input, output, version, encryption } => {

@@ -109,22 +109,22 @@ fn parse_contents(name: &str, data: &[u8]) -> Result<Contents> {
     Ok(Contents::Other)
 }
 
-pub fn run(args: &ResourceArgs, keys: Option<&GtaKeys>) -> Result<()> {
+pub fn run(args: &ResourceArgs, keys: Option<&GtaKeys>, verbose: bool) -> Result<()> {
     match &args.command {
-        ResourceCommand::Info(info) => run_info(info, keys),
+        ResourceCommand::Info(info) => run_info(info, keys, verbose),
     }
 }
 
-fn run_info(args: &InfoArgs, keys: Option<&GtaKeys>) -> Result<()> {
+fn run_info(args: &InfoArgs, keys: Option<&GtaKeys>, verbose: bool) -> Result<()> {
     let data = load_resource_bytes(&args.file, args.archive.as_deref(), keys)?;
     let header = parse_header(&data).with_context(|| format!("'{}'", args.file))?;
     let contents = parse_contents(&args.file, &data)?;
 
     let mut out = String::new();
     if args.json {
-        write_json(&mut out, args, &header, &contents);
+        write_json(&mut out, args, &header, &contents, verbose);
     } else {
-        write_text(&mut out, args, &header, &contents);
+        write_text(&mut out, args, &header, &contents, verbose);
     }
     print!("{out}");
     Ok(())
@@ -132,7 +132,7 @@ fn run_info(args: &InfoArgs, keys: Option<&GtaKeys>) -> Result<()> {
 
 // ─── text ────────────────────────────────────────────────────────────────────
 
-fn write_text(out: &mut String, args: &InfoArgs, h: &Rsc7Header, contents: &Contents) {
+fn write_text(out: &mut String, args: &InfoArgs, h: &Rsc7Header, contents: &Contents, verbose: bool) {
     use std::fmt::Write;
 
     match &args.archive {
@@ -159,7 +159,7 @@ fn write_text(out: &mut String, args: &InfoArgs, h: &Rsc7Header, contents: &Cont
         Contents::Drawables(entries) => {
             writeln!(out, "Drawables: {}", entries.len()).unwrap();
             for entry in entries {
-                write_drawable(out, entry);
+                write_drawable(out, entry, verbose);
             }
         }
     }
@@ -175,7 +175,7 @@ fn write_texture_line(out: &mut String, tex: &YtdTexture) {
     ).unwrap();
 }
 
-fn write_drawable(out: &mut String, entry: &DrawableEntry) {
+fn write_drawable(out: &mut String, entry: &DrawableEntry, verbose: bool) {
     use std::fmt::Write;
     let d = &entry.drawable;
 
@@ -194,6 +194,22 @@ fn write_drawable(out: &mut String, entry: &DrawableEntry) {
              bounds.box_max.x, bounds.box_max.y, bounds.box_max.z).unwrap();
     writeln!(out, "    lod dist: {:.1} / {:.1} / {:.1} / {:.1}",
              d.lod_distances[0], d.lod_distances[1], d.lod_distances[2], d.lod_distances[3]).unwrap();
+
+    if verbose {
+        if let Some(lod) = d.best_lod() {
+            let geoms = d.geometry_bounds(lod);
+            if !geoms.is_empty() {
+                writeln!(out, "    geometry bounds:").unwrap();
+                for g in &geoms {
+                    writeln!(out, "      #{} model {} shader {}   {} tris, {} verts",
+                             g.geometry, g.model, g.shader_id, g.triangles, g.vertices).unwrap();
+                    writeln!(out, "           min ({:.3}, {:.3}, {:.3}) max ({:.3}, {:.3}, {:.3}) centroid ({:.3}, {:.3}, {:.3})",
+                             g.min.x, g.min.y, g.min.z, g.max.x, g.max.y, g.max.z,
+                             g.centroid.x, g.centroid.y, g.centroid.z).unwrap();
+                }
+            }
+        }
+    }
 
     for lod in &d.lods {
         let geometries: usize = lod.models.iter().map(|m| m.geometries.len()).sum();
@@ -220,14 +236,14 @@ fn write_drawable(out: &mut String, entry: &DrawableEntry) {
 
 // ─── json ────────────────────────────────────────────────────────────────────
 
-fn write_json(out: &mut String, args: &InfoArgs, h: &Rsc7Header, contents: &Contents) {
+fn write_json(out: &mut String, args: &InfoArgs, h: &Rsc7Header, contents: &Contents, verbose: bool) {
     use std::fmt::Write;
 
     let (kind, body) = match contents {
         Contents::Other => ("other", String::new()),
         Contents::Textures(textures) => ("textures", format!(",\"textures\":{}", json_textures(textures))),
         Contents::Drawables(entries) => {
-            let items: Vec<String> = entries.iter().map(json_drawable).collect();
+            let items: Vec<String> = entries.iter().map(|e| json_drawable(e, verbose)).collect();
             ("drawables", format!(",\"drawables\":[{}]", items.join(",")))
         }
     };
@@ -255,11 +271,27 @@ fn json_vec3(v: &rpf_archive::Vec3) -> String {
     format!("[{},{},{}]", v.x, v.y, v.z)
 }
 
-fn json_drawable(entry: &DrawableEntry) -> String {
+fn json_geometry_bounds(geoms: &[rpf_archive::GeometryBounds]) -> String {
+    let items: Vec<String> = geoms.iter().map(|g| format!(
+        "{{\"model\":{},\"geometry\":{},\"shader\":{},\"vertices\":{},\"triangles\":{},\"min\":{},\"max\":{},\"centroid\":{}}}",
+        g.model, g.geometry, g.shader_id, g.vertices, g.triangles,
+        json_vec3(&g.min), json_vec3(&g.max), json_vec3(&g.centroid),
+    )).collect();
+    format!("[{}]", items.join(","))
+}
+
+fn json_drawable(entry: &DrawableEntry, verbose: bool) -> String {
     let d = &entry.drawable;
     let (bounds, computed) = match d.best_lod() {
         Some(lod) => d.bounds_or_computed(lod),
         None => (d.bounds.clone(), false),
+    };
+
+    let geometry_bounds = if verbose {
+        d.best_lod().map(|lod| format!(",\"geometry_bounds\":{}", json_geometry_bounds(&d.geometry_bounds(lod))))
+            .unwrap_or_default()
+    } else {
+        String::new()
     };
 
     let lods: Vec<String> = d.lods.iter().map(|lod| {
@@ -281,9 +313,10 @@ fn json_drawable(entry: &DrawableEntry) -> String {
     };
 
     format!(
-        "{{\"name\":{},\"hash\":\"0x{:08X}\",\"bounds\":{{\"center\":{},\"radius\":{},\"min\":{},\"max\":{},\"computed\":{}}},\"lod_distances\":[{},{},{},{}],\"lods\":[{}],\"shaders\":{},\"textures\":{}}}",
+        "{{\"name\":{},\"hash\":\"0x{:08X}\",\"bounds\":{{\"center\":{},\"radius\":{},\"min\":{},\"max\":{},\"computed\":{}}}{},\"lod_distances\":[{},{},{},{}],\"lods\":[{}],\"shaders\":{},\"textures\":{}}}",
         json_string(if d.name.is_empty() { &entry.name } else { &d.name }), entry.hash,
         json_vec3(&bounds.center), bounds.sphere_radius, json_vec3(&bounds.box_min), json_vec3(&bounds.box_max), computed,
+        geometry_bounds,
         d.lod_distances[0], d.lod_distances[1], d.lod_distances[2], d.lod_distances[3],
         lods.join(","), shaders, textures,
     )
