@@ -72,20 +72,7 @@ impl GameIndex {
     /// mounts them in; `collect_archives`'s own alphabetical order is left
     /// untouched, since `rpf search` still wants that.
     pub fn build(game_root: &Path, keys: Option<&GtaKeys>) -> Result<Self> {
-        let mut archives = collect_archives(game_root)?;
-        if archives.is_empty() {
-            bail!("no .rpf archives found under {}", game_root.display());
-        }
-
-        let dlc_rank = dlc_load_order(game_root, keys);
-        archives.sort_by_key(|p| {
-            let tier = archive_tier(p);
-            let rank = match &tier {
-                ArchiveTier::Dlc(name) => dlc_rank.get(name).copied().unwrap_or(u32::MAX),
-                _ => 0,
-            };
-            (tier.rank(), rank, p.clone())
-        });
+        let archives = ranked_archives(game_root, keys)?;
 
         let mut index = GameIndex::default();
         for archive_path in &archives {
@@ -240,6 +227,26 @@ pub struct IndexStats {
     pub archetypes: usize,
     pub resident_textures: usize,
     pub parent_txds: usize,
+}
+
+/// Every .rpf under `game_root` in the game's load order: base archives,
+/// then `update.rpf`, then DLC packs in `dlclist.xml`/`setup2.xml` order.
+/// Later archives override earlier ones.
+pub fn ranked_archives(game_root: &Path, keys: Option<&GtaKeys>) -> Result<Vec<PathBuf>> {
+    let mut archives = collect_archives(game_root)?;
+    if archives.is_empty() {
+        bail!("no .rpf archives found under {}", game_root.display());
+    }
+    let dlc_rank = dlc_load_order(game_root, keys);
+    archives.sort_by_key(|p| {
+        let tier = archive_tier(p);
+        let rank = match &tier {
+            ArchiveTier::Dlc(name) => dlc_rank.get(name).copied().unwrap_or(u32::MAX),
+            _ => 0,
+        };
+        (tier.rank(), rank, p.clone())
+    });
+    Ok(archives)
 }
 
 /// Which of the game's three load tiers an archive belongs to, matching

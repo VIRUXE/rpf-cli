@@ -42,6 +42,7 @@ tree          Display contents as a tree
 textures      Export textures from a .ytd/.ydr/.ydd/.yft as PNG/JPG/WebP (alias: ytd; --dds for raw DDS)
 screenshot    Render a .ydr/.ydd/.yft to an image (auto-framed, multi-view, external --ytd)
 resource      Inspect a loose resource file, or an entry inside an archive (`resource info`)
+navmesh       Inspect, fetch, export and build navmesh cells (`navmesh info|cell|export|ybn-obj|build`)
 update        Check for a newer release, or update this binary in place
 create        Create an archive from a directory
 extract-keys  Write the keys out to disk for reuse with --keys
@@ -261,6 +262,33 @@ takes to pick one of them:
 rage screenshot ./nested/some_dictionary.ydd --views front,iso        # every entry, named by hash
 rage screenshot ./nested/some_dictionary.ydd --entry 0x<hash> --views front,iso
 ```
+
+### Navmeshes
+
+`.ynv` files are the pathfinding polygons peds walk on, one per 150 m grid
+cell (`navmesh[X][Y].ynv`, X and Y being the cell index times three).
+A custom MLO ships none, so NPCs inside it walk into the walls of whatever
+stood there before. `rage navmesh` reads, fetches and rebuilds cells:
+
+```sh
+rage navmesh info "navmesh[108][96].ynv"                       # cell, bounds, polygon/edge/portal counts
+rage navmesh cell --exe "<GTA V>" --at=-578,-1061 -o cell.ynv  # the cell under a world position, from whichever archive loads last
+rage navmesh export cell.ynv -o cell.obj                       # polygons as OBJ (exterior/interior/sunk groups)
+rage navmesh ybn-obj interior.ybn --ymap interior_milo.ymap -o collision.obj   # an MLO's collision, placed in the world
+rage navmesh build cell.ynv --ybn interior.ybn --ymap interior_milo.ymap     --clip=-600,-1070,-566,-1050 --floor-z 21.25 -o "navmesh[108][96].ynv" --obj check.obj
+```
+
+`build` rasterises the collision's walkable floor onto a grid (`--grid`,
+0.25 m), knocks out every cell a ped's body slab (`--body 0.15,0.45` above
+the floor) would hit, merges the rest into rectangles (`--max-side`) and
+appends them to the cell as interior, flat-ground polygons with proper edge
+adjacency (a GTA polygon edge names exactly one neighbour, so shared edges
+are split vertex for vertex). Vanilla polygons under the interior are sunk
+and cut off rather than deleted, which keeps every polygon index — and so
+every edge from the neighbouring cells — valid. Furniture whose collision
+lives in escrowed `.ydr`s can be excluded with `--block x0,y0,x1,y1`. Drop
+the result in a resource's `stream/` folder and FiveM streams it over the
+game's cell.
 
 ## Keys
 

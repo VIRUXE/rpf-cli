@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 mod rpf;
 mod commands;
+mod navmesh;
 mod index;
 mod keys;
 mod paths;
@@ -11,7 +12,7 @@ mod resources;
 mod update;
 mod utils;
 
-use commands::{info, list, extract, verify, tree, textures, screenshot, create, search, resource, index_cmd};
+use commands::{info, list, extract, verify, tree, textures, screenshot, create, search, resource, index_cmd, navmesh as navmesh_cmd};
 use commands::update as update_cmd;
 use rpf::GtaKeys;
 
@@ -111,6 +112,9 @@ enum Commands {
     /// Inspect loose resource files (.ydr/.ytd/...) or entries inside an archive
     Resource(resource::ResourceArgs),
 
+    /// Inspect, fetch, export and build navmesh cells (.ynv)
+    Navmesh(navmesh_cmd::NavmeshArgs),
+
     /// Check for a newer release, or update this binary in place
     Update(update_cmd::UpdateArgs),
 
@@ -191,6 +195,7 @@ fn dispatch(command: Commands, keys: Option<&GtaKeys>, exe: Option<&Path>, verbo
         Commands::Textures(args)                             => textures::run(&args, keys),
         Commands::Screenshot(args)                           => screenshot::run(&args, keys, exe),
         Commands::Resource(args)                             => resource::run(&args, keys, verbose),
+        Commands::Navmesh(args)                              => navmesh_cmd::run(&args, keys, exe),
         Commands::Update(args)                               => update_cmd::run(&args),
         Commands::Index(args)                                => index_cmd::run(&args, keys, exe),
         Commands::Create { input, output, version, encryption } => {
