@@ -17,15 +17,15 @@ use rpf::GtaKeys;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-#[command(name = "rpf")]
-#[command(about = "A CLI tool for working with RAGE Package Files (RPF)", long_about = None)]
+#[command(name = "rage")]
+#[command(about = "A CLI for RAGE game files: RPF archives, RSC7 resources, textures, renders and navmeshes", long_about = None)]
 struct Cli {
     /// Enable verbose output
     #[arg(short, long, global = true)]
     verbose: bool,
 
     /// GTA5.exe (or the folder holding it) to read the keys from; the keys are
-    /// cached per game build under ~/.rpf-cli/keys (RPF_KEYS_CACHE overrides)
+    /// cached per game build under ~/.rage-cli/keys (RAGE_KEYS_CACHE overrides)
     #[arg(long, global = true, value_name = "PATH", env = "GTAV_PATH")]
     exe: Option<PathBuf>,
 
@@ -35,7 +35,7 @@ struct Cli {
     keys: Option<PathBuf>,
 
     /// Skip the daily background check for a newer release
-    /// (also RPF_NO_UPDATE_CHECK)
+    /// (also RAGE_NO_UPDATE_CHECK)
     #[arg(long, global = true)]
     no_update_check: bool,
 
